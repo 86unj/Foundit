@@ -15,8 +15,10 @@ const widthMap = {
 
 type WidthVariant = keyof typeof widthMap;
 
-export interface TextInputProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'id' | 'size' | 'width'> {
+export interface TextInputProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  'id' | 'size' | 'width'
+> {
   label: string;
   required?: boolean;
   hint?: string;
@@ -36,17 +38,11 @@ export default function TextInput({
   autoComplete,
   ...rest
 }: TextInputProps) {
-  
   const isInvalid = !!error;
 
   return (
     // 1. In v3, FormControl is replaced by Field.Root
-    <Field.Root 
-      id={id} 
-      required={required} 
-      invalid={isInvalid} 
-      mb={7}
-    >
+    <Field.Root id={id} required={required} invalid={isInvalid} mb={7}>
       {/* 2. In v3, FormLabel is replaced by Field.Label */}
       <Field.Label
         fontSize="1rem"
@@ -88,8 +84,7 @@ export default function TextInput({
       <Input
         type={type}
         autoComplete={autoComplete}
-        placeholder={undefined} 
-        
+        placeholder={undefined}
         h={12}
         px={4}
         fontSize="1rem"
@@ -98,19 +93,15 @@ export default function TextInput({
         bg="white"
         borderWidth="2px"
         borderRadius="md"
-        
         borderColor="#1a1a1a"
         _invalid={{ borderColor: '#cd0000' }}
-        
         _focusVisible={{
           outline: 'none',
           boxShadow: '0 0 0 4px #009adb',
           borderColor: 'inherit',
         }}
-        
         w={widthMap[width]}
         maxW={widthMap[width]}
-        
         {...rest}
       />
     </Field.Root>
