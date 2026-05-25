@@ -6,7 +6,7 @@ import { Box, Button, Heading, Stack, Text } from '@chakra-ui/react';
 
 export default function Home() {
   function handleSignIn() {
-    // TODO: wire up auth
+    window.location.href = '/signin';
   }
 
   return (
@@ -14,14 +14,13 @@ export default function Home() {
       <Box
         position="fixed"
         inset={0}
-        backgroundImage="url('/login-bg.jpg')"
+        backgroundImage="url('/bg.svg')"
         backgroundSize="cover"
         backgroundPosition="center"
         backgroundRepeat="no-repeat"
         zIndex={0}
       />
       <Box position="fixed" inset={0} bg="blackAlpha.700" zIndex={0} />
-      {/* Content above background */}
       <Box
         position="relative"
         zIndex={1}
@@ -38,33 +37,53 @@ export default function Home() {
         >
           <Stack
             bg="bg"
-            rounded="xl"
+            rounded="md"
             shadow="md"
-            p={12}
-            w="full"
-            maxW="md"
-            minH="55vh"
-            justify="space-around"
+            p={8}
+            w="380px"
             alignItems="center"
             textAlign="center"
           >
-            <Heading size="4xl" color="black">
-              Welcome to FoundIt
-            </Heading>
+            <Stack gap={8} alignItems="center">
+              <Heading fontSize="28px" color="black" mb={6}>
+                Welcome
+              </Heading>
 
-            <Text color="fg.muted" fontSize="sm">
-              Please login to your account to continue
-            </Text>
-
-            <Button px={16} colorPalette="red" onClick={handleSignIn}>
-              Login
-            </Button>
-
-            <Stack gap={1} fontSize="sm">
-              <Text fontWeight="medium" color="black">
-                Lost and found office hours:
+              <Text color="fg.muted" fontSize="14px" fontWeight="normal">
+                Please proceed login with your school account
               </Text>
-              <Text color="fg.muted">Mon. to Fri. 9:00 AM - 5:00 PM</Text>
+
+              <Stack gap={2} alignItems="center">
+                <Button
+                  w="172px"
+                  h="48px"
+                  rounded="12px"
+                  fontSize="16px"
+                  colorPalette="blue"
+                  onClick={handleSignIn}
+                >
+                  Login
+                </Button>
+                <Button
+                  w="172px"
+                  h="48px"
+                  rounded="12px"
+                  fontSize="16px"
+                  colorPalette="blue"
+                  variant="outline"
+                >
+                  Sign Up
+                </Button>
+              </Stack>
+
+              <Stack gap={1}>
+                <Text fontSize="13px" fontWeight="normal" color="fg.muted">
+                  Lost and found office hours
+                </Text>
+                <Text fontSize="13px" fontWeight="normal" color="fg.muted">
+                  Mon - Fri &nbsp;&nbsp;&nbsp;&nbsp; 9:00AM - 5:00PM
+                </Text>
+              </Stack>
             </Stack>
           </Stack>
         </Box>
