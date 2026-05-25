@@ -7,7 +7,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app"
+    "lint": "eslint app",
+    "format": "../node_modules/.bin/prettier --write .",
+    "format:check": "../node_modules/.bin/prettier --check ."
   },
   "dependencies": {
     "@chakra-ui/react": "^3.35.0",
