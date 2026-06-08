@@ -1,57 +1,81 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { getLoggedInUser, getAccessToken } from '@/utils/auth';
-import { MOCK_STUDENT_USER, formatDisplayName } from '@/constants/mockSession';
+import {
+  getAccessToken,
+  getLoggedInUser,
+  setLoggedInUser,
+  type LoggedInUser,
+  type UserRole,
+} from '@/utils/auth';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 
-// TODO: Remove PLACEHOLDER once GET /api/users/me is implemented.
-// Prefill sources per field once the endpoint is live:
-//   fullName, email            → localStorage key 'user' (stored at login, read via getLoggedInUser())
-//   phoneNumber                → GET /api/users/me  → response.phone
-//   emailNotificationOptIn     → GET /api/users/me  → response.emailNotificationOptIn
-const PLACEHOLDER = {
-  fullName: formatDisplayName(MOCK_STUDENT_USER),
-  email: 'alice@myseneca.ca',
-  phoneNumber: '4161234567',
-  emailNotificationOptIn: true,
-};
-
 interface UserProfileResponse {
+  userId: string;
+  email: string;
+  role: UserRole;
   firstName: string;
   lastName: string;
-  email: string;
+  campusId: string | null;
+  campusName: string | null;
   phone: string | null;
+  employeeId: string | null;
+  studentNumber: number | null;
   emailNotificationOptIn: boolean;
 }
 
-export function useProfileForm() {
-  // Pre-seed from localStorage if available, otherwise use placeholder data
-  // so the page is viewable before the API is implemented.
-  const storedUser = getLoggedInUser();
+function toLoggedInUser(profile: UserProfileResponse): LoggedInUser {
+  return {
+    userId: profile.userId,
+    email: profile.email,
+    role: profile.role,
+    firstName: profile.firstName,
+    lastName: profile.lastName,
+    campusId: profile.campusId,
+    campusName: profile.campusName,
+    phone: profile.phone,
+    employeeId: profile.employeeId,
+  };
+}
 
-  const [fullName, setFullName] = useState(
-    storedUser
-      ? `${storedUser.firstName} ${storedUser.lastName}`.trim()
-      : PLACEHOLDER.fullName
-  );
-  const [email, setEmail] = useState(storedUser?.email ?? PLACEHOLDER.email);
-  const [phoneNumber, setPhoneNumber] = useState(PLACEHOLDER.phoneNumber);
+function buildInitialState() {
+  const storedUser = getLoggedInUser();
+  return {
+    firstName: storedUser?.firstName ?? '',
+    lastName: storedUser?.lastName ?? '',
+    email: storedUser?.email ?? '',
+    phoneNumber: storedUser?.phone ?? '',
+    employeeId: storedUser?.employeeId ?? '',
+    campusName: storedUser?.campusName ?? '',
+    studentNumber: '',
+    role: storedUser?.role ?? ('student' as UserRole),
+    emailNotificationOptIn: false,
+  };
+}
+
+export function useProfileForm() {
+  const initial = buildInitialState();
+
+  const [firstName, setFirstName] = useState(initial.firstName);
+  const [lastName, setLastName] = useState(initial.lastName);
+  const [email, setEmail] = useState(initial.email);
+  const [phoneNumber, setPhoneNumber] = useState(initial.phoneNumber);
+  const [employeeId, setEmployeeId] = useState(initial.employeeId);
+  const [campusName, setCampusName] = useState(initial.campusName);
+  const [studentNumber, setStudentNumber] = useState(initial.studentNumber);
+  const [role, setRole] = useState<UserRole>(initial.role);
   const [allowEmailNotifications, setAllowEmailNotifications] = useState(
-    PLACEHOLDER.emailNotificationOptIn
+    initial.emailNotificationOptIn
   );
   const [isLoading, setIsLoading] = useState(true);
-
-  // Separate saving state so the Save button can show an activity indicator
-  // independently from the initial page load.
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>(
     'idle'
   );
 
-  // On mount: fetch full profile to populate phone and notification pref.
-  // Silently falls back to defaults while GET /api/users/me returns 501.
+  const fullName = `${firstName} ${lastName}`.trim();
+
   useEffect(() => {
     async function loadProfile() {
       const token = getAccessToken();
@@ -65,28 +89,36 @@ export function useProfileForm() {
           headers: { Authorization: `Bearer ${token}` },
         });
 
-        if (res.ok) {
-          const data: UserProfileResponse = await res.json();
-          setFullName(`${data.firstName} ${data.lastName}`.trim());
-          setEmail(data.email);
-          setPhoneNumber(data.phone ?? '');
-          setAllowEmailNotifications(data.emailNotificationOptIn);
+        if (!res.ok) {
+          return;
         }
-        // 501 / 4xx — silently keep localStorage-seeded defaults
+
+        const data = (await res.json()) as UserProfileResponse;
+        setFirstName(data.firstName);
+        setLastName(data.lastName);
+        setEmail(data.email);
+        setPhoneNumber(data.phone ?? '');
+        setEmployeeId(data.employeeId ?? '');
+        setCampusName(data.campusName ?? '');
+        setStudentNumber(
+          data.studentNumber !== null ? String(data.studentNumber) : ''
+        );
+        setRole(data.role);
+        setAllowEmailNotifications(data.emailNotificationOptIn);
+        setLoggedInUser(toLoggedInUser(data));
       } catch {
-        // Network error — keep defaults
+        // Keep localStorage-seeded values when the API is unavailable.
       } finally {
         setIsLoading(false);
       }
     }
 
-    loadProfile();
+    void loadProfile();
   }, []);
 
-  // Called only when the user clicks Save. Sends PATCH requests to the backend.
   const handleSave = async () => {
     const token = getAccessToken();
-    if (!token) {
+    if (!token || !firstName.trim() || !lastName.trim()) {
       setSaveStatus('error');
       return;
     }
@@ -95,25 +127,22 @@ export function useProfileForm() {
     setSaveStatus('idle');
 
     try {
-      const [firstName = '', ...rest] = fullName.trim().split(/\s+/);
-      const lastName = rest.join(' ') || undefined;
-
-      const [profileRes, notifRes] = await Promise.all([
-        // PATCH /api/users/me — updates firstName, lastName, phone
-        fetch(`${API_BASE}/api/users/me`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            firstName,
-            lastName,
-            phone: phoneNumber || null,
-          }),
+      const profileRes = await fetch(`${API_BASE}/api/users/me`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          phone: phoneNumber.trim() || null,
         }),
-        // PATCH /api/users/me/notifications — updates email notification opt-in
-        fetch(`${API_BASE}/api/users/me/notifications`, {
+      });
+
+      let notifOk = true;
+      if (role === 'student') {
+        const notifRes = await fetch(`${API_BASE}/api/users/me/notifications`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -122,10 +151,25 @@ export function useProfileForm() {
           body: JSON.stringify({
             emailNotificationOptIn: allowEmailNotifications,
           }),
-        }),
-      ]);
+        });
+        notifOk = notifRes.ok;
+      }
 
-      setSaveStatus(profileRes.ok && notifRes.ok ? 'success' : 'error');
+      if (profileRes.ok) {
+        const data = (await profileRes.json()) as UserProfileResponse;
+        setFirstName(data.firstName);
+        setLastName(data.lastName);
+        setPhoneNumber(data.phone ?? '');
+        setEmployeeId(data.employeeId ?? '');
+        setCampusName(data.campusName ?? '');
+        setStudentNumber(
+          data.studentNumber !== null ? String(data.studentNumber) : ''
+        );
+        setAllowEmailNotifications(data.emailNotificationOptIn);
+        setLoggedInUser(toLoggedInUser(data));
+      }
+
+      setSaveStatus(profileRes.ok && notifOk ? 'success' : 'error');
     } catch {
       setSaveStatus('error');
     } finally {
@@ -143,11 +187,13 @@ export function useProfileForm() {
 
   return {
     fullName,
-    setFullName,
     email,
-    setEmail,
     phoneNumber,
     setPhoneNumber,
+    employeeId,
+    campusName,
+    studentNumber,
+    role,
     allowEmailNotifications,
     setAllowEmailNotifications,
     isLoading,

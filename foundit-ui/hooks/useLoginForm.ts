@@ -2,7 +2,13 @@
 
 import { useState } from 'react';
 import { validateEmail } from '@/utils/validation';
-import { getRoleHome, setSessionRole, type UserRole } from '@/utils/auth';
+import {
+  getRoleHome,
+  setLoggedInUser,
+  setSessionRole,
+  type LoggedInUser,
+  type UserRole,
+} from '@/utils/auth';
 
 export function useLoginForm() {
   const [email, setEmail] = useState('');
@@ -51,7 +57,10 @@ export function useLoginForm() {
       }
 
       localStorage.setItem('accessToken', result.accessToken);
-      localStorage.setItem('user', JSON.stringify(result.user));
+      if (result.refreshToken) {
+        localStorage.setItem('refreshToken', result.refreshToken);
+      }
+      setLoggedInUser(result.user as LoggedInUser);
 
       const role = result.user.role as UserRole;
       setSessionRole(role);
