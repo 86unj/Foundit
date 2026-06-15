@@ -61,6 +61,57 @@ export interface LoggedInUser {
   firstName: string;
   lastName: string;
   campusId?: string | null;
+  campusName?: string | null;
+  phone?: string | null;
+  employeeId?: string | null;
+}
+
+export function setLoggedInUser(user: LoggedInUser) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  localStorage.setItem('user', JSON.stringify(user));
+}
+
+export async function fetchLoggedInUserProfile(): Promise<LoggedInUser | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const accessToken = localStorage.getItem('accessToken');
+  if (!apiUrl || !accessToken) {
+    return getLoggedInUser();
+  }
+
+  try {
+    const response = await fetch(`${apiUrl}/api/users/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    if (!response.ok) {
+      return getLoggedInUser();
+    }
+
+    const data = (await response.json()) as LoggedInUser & {
+      studentNumber?: number | null;
+    };
+    const profile: LoggedInUser = {
+      userId: data.userId,
+      email: data.email,
+      role: data.role,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      campusId: data.campusId,
+      campusName: data.campusName ?? null,
+      phone: data.phone ?? null,
+      employeeId: data.employeeId ?? null,
+    };
+    setLoggedInUser(profile);
+    return profile;
+  } catch {
+    return getLoggedInUser();
+  }
 }
 
 export function getLoggedInUser(): LoggedInUser | null {

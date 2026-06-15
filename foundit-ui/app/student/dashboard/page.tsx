@@ -12,7 +12,6 @@ import {
   Stack,
   Text,
 } from '@chakra-ui/react';
-import { MOCK_STUDENT_DISPLAY_NAME } from '@/constants/mockSession';
 import { useLoggedInDisplayName } from '@/hooks/useLoggedInDisplayName';
 
 interface FoundItem {
@@ -22,7 +21,7 @@ interface FoundItem {
 }
 
 export default function StudentDashboardPage() {
-  const displayName = useLoggedInDisplayName(MOCK_STUDENT_DISPLAY_NAME);
+  const displayName = useLoggedInDisplayName();
   const [foundItems, setFoundItems] = useState<FoundItem[]>([]);
   const [loading, setLoading] = useState(true);
 

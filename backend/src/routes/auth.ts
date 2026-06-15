@@ -22,6 +22,7 @@ import {
   getVerifyTokenExpiry,
 } from '../utils/emailVerification';
 import { sendVerificationEmail } from '../lib/email';
+import { toUserProfileResponse } from '../utils/userProfile';
 
 // Limits login attempts to 10 per IP per 15 minutes to slow down brute-force attacks.
 const loginRateLimiter = rateLimit({
@@ -109,6 +110,7 @@ router.post(
       // to avoid leaking whether an email is registered.
       const user = await prisma.user.findUnique({
         where: { email: email.toLowerCase() },
+        include: { campus: { select: { campusName: true } } },
       });
       if (!user) {
         res.status(401).json({
@@ -175,14 +177,7 @@ router.post(
       res.status(200).json({
         accessToken,
         refreshToken,
-        user: {
-          userId: user.userId,
-          email: user.email,
-          role: user.role,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          campusId: user.campusId,
-        },
+        user: toUserProfileResponse(user),
       });
     } catch (err) {
       next(err);

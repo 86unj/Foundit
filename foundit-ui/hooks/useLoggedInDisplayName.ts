@@ -1,12 +1,20 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
-import { getLoggedInDisplayName } from '@/utils/auth';
+import { useEffect, useState } from 'react';
+import { fetchLoggedInUserProfile, getLoggedInDisplayName } from '@/utils/auth';
 
-export function useLoggedInDisplayName(fallback: string): string {
-  return useSyncExternalStore(
-    () => () => {},
-    () => getLoggedInDisplayName() ?? fallback,
-    () => fallback
+export function useLoggedInDisplayName(): string {
+  const [displayName, setDisplayName] = useState(
+    () => getLoggedInDisplayName() ?? ''
   );
+
+  useEffect(() => {
+    void fetchLoggedInUserProfile().then((profile) => {
+      if (profile?.firstName) {
+        setDisplayName(`${profile.firstName} ${profile.lastName}`.trim());
+      }
+    });
+  }, []);
+
+  return displayName;
 }

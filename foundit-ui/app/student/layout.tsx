@@ -2,7 +2,6 @@
 
 import { usePathname } from 'next/navigation';
 import { RoleShell } from '@/components/layouts/RoleShell';
-import { MOCK_STUDENT_DISPLAY_NAME } from '@/constants/mockSession';
 import { useLoggedInDisplayName } from '@/hooks/useLoggedInDisplayName';
 
 export default function StudentLayout({
@@ -11,7 +10,7 @@ export default function StudentLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const userName = useLoggedInDisplayName(MOCK_STUDENT_DISPLAY_NAME);
+  const userName = useLoggedInDisplayName();
 
   return (
     <RoleShell variant="student" userName={userName} activePath={pathname}>

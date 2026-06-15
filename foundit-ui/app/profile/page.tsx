@@ -5,8 +5,7 @@ import Footer from '@/components/Footer';
 import TextInput from '@/components/TextInput';
 import { useProfileForm } from '@/hooks/useProfileForm';
 import { useLoggedInDisplayName } from '@/hooks/useLoggedInDisplayName';
-import { getLoggedInUser } from '@/utils/auth';
-import { MOCK_STUDENT_USER, formatDisplayName } from '@/constants/mockSession';
+import { getLoggedInUser, signOut } from '@/utils/auth';
 import {
   Box,
   Button,
@@ -18,13 +17,7 @@ import {
   Text,
 } from '@chakra-ui/react';
 import { useSyncExternalStore, useState } from 'react';
-import { useRouter } from 'next/navigation';
 
-const FALLBACK_NAME = formatDisplayName(MOCK_STUDENT_USER);
-
-// Returns a primitive string so useSyncExternalStore compares by value.
-// Returning an object creates a new reference each render and causes an
-// infinite loop.
 function useLoggedInRole(): 'student' | 'security' {
   return useSyncExternalStore(
     () => () => {},
@@ -36,9 +29,8 @@ function useLoggedInRole(): 'student' | 'security' {
 type ActiveTab = 'profile' | 'notifications';
 
 export default function ProfileSettingsPage() {
-  const router = useRouter();
   const navVariant = useLoggedInRole();
-  const displayName = useLoggedInDisplayName(FALLBACK_NAME);
+  const displayName = useLoggedInDisplayName();
   const [activeTab, setActiveTab] = useState<ActiveTab>('profile');
 
   const {
@@ -46,6 +38,10 @@ export default function ProfileSettingsPage() {
     email,
     phoneNumber,
     setPhoneNumber,
+    employeeId,
+    campusName,
+    studentNumber,
+    role,
     allowEmailNotifications,
     setAllowEmailNotifications,
     isLoading,
@@ -57,7 +53,6 @@ export default function ProfileSettingsPage() {
 
   return (
     <Box minH="100vh" display="flex" flexDirection="column" position="relative">
-      {/* Background */}
       <Box
         position="fixed"
         inset={0}
@@ -91,7 +86,6 @@ export default function ProfileSettingsPage() {
           py={10}
         >
           <HStack gap={7} maxW="1000px" w="full" align="flex-start">
-            {/* Left: profile side menu */}
             <Stack
               bg="white"
               rounded="md"
@@ -146,7 +140,7 @@ export default function ProfileSettingsPage() {
                 cursor="pointer"
                 rounded="md"
                 _hover={{ bg: 'red.50' }}
-                onClick={() => router.push('/login')}
+                onClick={signOut}
               >
                 <Text color="red.600" fontWeight="medium" fontSize="sm">
                   Sign out
@@ -154,7 +148,6 @@ export default function ProfileSettingsPage() {
               </Box>
             </Stack>
 
-            {/* Right panel — switches between Profile and Notifications */}
             <Stack bg="white" rounded="md" shadow="md" flex={1} p={10} gap={6}>
               {activeTab === 'profile' ? (
                 <>
@@ -168,7 +161,6 @@ export default function ProfileSettingsPage() {
                     </Flex>
                   ) : (
                     <>
-                      {/* Avatar + change photo */}
                       <HStack gap={4} align="center">
                         <Flex
                           w="80px"
@@ -192,7 +184,6 @@ export default function ProfileSettingsPage() {
                         </Button>
                       </HStack>
 
-                      {/* Form fields */}
                       <Stack gap={5}>
                         <TextInput
                           id="fullName"
@@ -222,28 +213,62 @@ export default function ProfileSettingsPage() {
                           value={phoneNumber}
                           width="full"
                           onChange={(e) => setPhoneNumber(e.target.value)}
+                          hint="Optional. Enter 10 digits with no spaces or dashes."
                         />
 
-                        <HStack gap={4} align="center">
-                          <Text fontSize="sm" color="gray.700">
-                            Allow email notifications
-                          </Text>
-                          <Switch.Root
-                            colorPalette="blue"
-                            checked={allowEmailNotifications}
-                            onCheckedChange={(e: { checked: boolean }) =>
-                              setAllowEmailNotifications(e.checked)
-                            }
-                          >
-                            <Switch.HiddenInput />
-                            <Switch.Control>
-                              <Switch.Thumb />
-                            </Switch.Control>
-                          </Switch.Root>
-                        </HStack>
+                        {role === 'security' && (
+                          <>
+                            <TextInput
+                              id="employeeId"
+                              label="Employee ID"
+                              value={employeeId}
+                              width="full"
+                              disabled
+                              readOnly
+                            />
+                            <TextInput
+                              id="campus"
+                              label="Campus"
+                              value={campusName || '—'}
+                              width="full"
+                              disabled
+                              readOnly
+                            />
+                          </>
+                        )}
+
+                        {role === 'student' && studentNumber && (
+                          <TextInput
+                            id="studentNumber"
+                            label="Student Number"
+                            value={studentNumber}
+                            width="full"
+                            disabled
+                            readOnly
+                          />
+                        )}
+
+                        {role === 'student' && (
+                          <HStack gap={4} align="center">
+                            <Text fontSize="sm" color="gray.700">
+                              Allow email notifications
+                            </Text>
+                            <Switch.Root
+                              colorPalette="blue"
+                              checked={allowEmailNotifications}
+                              onCheckedChange={(e: { checked: boolean }) =>
+                                setAllowEmailNotifications(e.checked)
+                              }
+                            >
+                              <Switch.HiddenInput />
+                              <Switch.Control>
+                                <Switch.Thumb />
+                              </Switch.Control>
+                            </Switch.Root>
+                          </HStack>
+                        )}
                       </Stack>
 
-                      {/* Save row */}
                       <HStack gap={4} align="center">
                         <Button
                           colorPalette="blue"
@@ -281,10 +306,6 @@ export default function ProfileSettingsPage() {
                   )}
                 </>
               ) : (
-                // TODO: Replace this stub once PATCH /api/users/me/notifications is implemented.
-                // Render notification preferences here (e.g. emailNotificationOptIn toggle).
-                // Current value is fetched via GET /api/users/me → response.emailNotificationOptIn
-                // and saved via PATCH /api/users/me/notifications → { emailNotificationOptIn: boolean }
                 <Flex
                   direction="column"
                   align="center"
