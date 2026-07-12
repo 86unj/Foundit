@@ -494,11 +494,16 @@ function createClaimStatusNotificationInput(
   nextStatus: ClaimStatus
 ) {
   const statusText = nextStatus.replace('_', ' ');
+  // Prefer the item name; fall back to a short reference — the raw UUID is
+  // too noisy for a notification message (full id stays in referenceId).
+  const claimLabel = claim.itemName
+    ? `Your claim for "${claim.itemName}"`
+    : `Your claim #${claim.claimId.slice(0, 8).toUpperCase()}`;
   return {
     recipientId: claim.studentId,
     type: NotificationType.claim_status_update,
     title: `Claim status updated: ${statusText}`,
-    message: `Your claim ${claim.claimId} is now ${statusText}.`,
+    message: `${claimLabel} is now ${statusText}.`,
     referenceType: 'claim',
     referenceId: claim.claimId,
   } as const;
