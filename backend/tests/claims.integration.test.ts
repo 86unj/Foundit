@@ -5,7 +5,10 @@ import claimsRouter from '../src/routes/claims';
 import { UserRole, ClaimStatus } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({
-  authUser: { user_id: 'student-1' } as { user_id: string } | null,
+  authUser: { user_id: 'student-1' } as {
+    user_id: string;
+    role?: string;
+  } | null,
 }));
 
 vi.mock('../src/middleware/authenticate', () => ({
@@ -32,7 +35,20 @@ vi.mock('../src/db', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    auditLog: {
+      create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
+    },
+    $transaction: vi.fn(),
   },
+}));
+
+vi.mock('../src/lib/matching/ingest', () => ({
+  scheduleClaimSearchIndexIngest: vi.fn(),
+  scheduleItemSearchIndexIngest: vi.fn(),
+}));
+
+vi.mock('../src/lib/matching/suggestions', () => ({
+  refreshClaimMatchSuggestions: vi.fn(),
 }));
 
 import { prisma } from '../src/db';
@@ -231,5 +247,82 @@ describe('claims routes', () => {
     expect(res.body.claimId).toBe(claimRow.claimId);
     expect(res.body.studentId).toBe('student-1');
     expect(res.body.category).toBe('Electronics');
+  });
+
+  function createClaimTx(securityRecipients: { userId: string }[]) {
+    return {
+      claim: {
+        create: vi.fn().mockResolvedValue({ claimId: claimRow.claimId }),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(claimRow),
+      },
+      itemImage: {
+        createMany: vi.fn(),
+      },
+      user: {
+        findMany: vi.fn().mockResolvedValue(securityRecipients),
+      },
+      notification: {
+        createMany: vi.fn(),
+      },
+    };
+  }
+
+  test('POST /api/claims notifies active same-campus security staff', async () => {
+    mocks.authUser = { user_id: 'student-1', role: UserRole.student };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
+
+    const tx = createClaimTx([{ userId: 'security-1' }, { userId: 'admin-1' }]);
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app)
+      .post('/api/claims')
+      .send({ category: 'Electronics', description: 'Lost my iPhone' });
+
+    expect(res.status).toBe(201);
+    expect(tx.user.findMany).toHaveBeenCalledWith({
+      where: {
+        role: { in: [UserRole.security, UserRole.admin] },
+        campusId: 'campus-1',
+        isActive: true,
+      },
+      select: { userId: true },
+    });
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          recipientId: 'security-1',
+          title: 'New Claim Submitted',
+          referenceType: 'claim',
+          referenceId: claimRow.claimId,
+        }),
+        expect.objectContaining({
+          recipientId: 'admin-1',
+          title: 'New Claim Submitted',
+        }),
+      ],
+    });
+  });
+
+  test('POST /api/claims creates no notifications when the campus has no security staff', async () => {
+    mocks.authUser = { user_id: 'student-1', role: UserRole.student };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
+
+    const tx = createClaimTx([]);
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app)
+      .post('/api/claims')
+      .send({ category: 'Electronics', description: 'Lost my iPhone' });
+
+    expect(res.status).toBe(201);
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
   });
 });

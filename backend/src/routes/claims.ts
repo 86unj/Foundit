@@ -504,6 +504,35 @@ function createClaimStatusNotificationInput(
   } as const;
 }
 
+async function notifySecurityOfNewClaim(
+  tx: Prisma.TransactionClient,
+  claim: { claimId: string; campusId: string }
+) {
+  const recipients = await tx.user.findMany({
+    where: {
+      role: { in: [UserRole.security, UserRole.admin] },
+      campusId: claim.campusId,
+      isActive: true,
+    },
+    select: { userId: true },
+  });
+
+  if (recipients.length === 0) {
+    return;
+  }
+
+  await tx.notification.createMany({
+    data: recipients.map(({ userId }) => ({
+      recipientId: userId,
+      type: NotificationType.claim_status_update,
+      title: 'New Claim Submitted',
+      message: 'A claim was submitted by a student.',
+      referenceType: 'claim',
+      referenceId: claim.claimId,
+    })),
+  });
+}
+
 /**
  * @openapi
  * /api/claims:
@@ -611,6 +640,11 @@ router.post(
             })),
           });
         }
+
+        await notifySecurityOfNewClaim(tx, {
+          claimId: created.claimId,
+          campusId,
+        });
 
         return tx.claim.findUniqueOrThrow({
           where: { claimId: created.claimId },
