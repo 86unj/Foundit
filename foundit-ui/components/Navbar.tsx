@@ -37,6 +37,7 @@
 import {
   Box,
   Button as ChakraButton,
+  Circle,
   Flex,
   HStack,
   IconButton,
@@ -47,12 +48,19 @@ import {
 } from '@chakra-ui/react';
 import { Button } from './ui/Button';
 import MdiIcon from '@mdi/react';
-import { mdiAccountCircle, mdiChevronDown, mdiClose, mdiMenu } from '@mdi/js';
+import {
+  mdiAccountCircle,
+  mdiBellOutline,
+  mdiChevronDown,
+  mdiClose,
+  mdiMenu,
+} from '@mdi/js';
 import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from '@/utils/auth';
-import type { UserRole } from '@/utils/routes';
+import { fetchNotifications } from '@/lib/api/notifications';
+import { NOTIFICATIONS_PATH, type UserRole } from '@/utils/routes';
 
 /**
  * Partial view of the user object returned by GET /api/users/me.
@@ -175,12 +183,12 @@ const userMenuItemsByVariant: Record<
 > = {
   student: [
     { label: 'Profile', href: '/profile' },
-    { label: 'Notifications', href: '/profile?tab=notifications' },
+    { label: 'Notifications', href: NOTIFICATIONS_PATH },
     { label: 'Sign Out', onClick: signOut, danger: true },
   ],
   security: [
     { label: 'Profile', href: '/profile' },
-    { label: 'Notifications', href: '/profile?tab=notifications' },
+    { label: 'Notifications', href: NOTIFICATIONS_PATH },
     { label: 'Sign Out', onClick: signOut, danger: true },
   ],
 };
@@ -200,6 +208,30 @@ export default function Navbar({
   const navLinks = navLinksByVariant[variant];
   const isAuthenticated = variant !== 'guest';
   const userMenuItems = isAuthenticated ? userMenuItemsByVariant[variant] : [];
+
+  // Unread badge for the bell. Refreshed on route change so marking
+  // notifications read is reflected once the user navigates.
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+    fetchNotifications()
+      .then((data) => {
+        if (!cancelled) {
+          setUnreadCount(data.unreadCount);
+        }
+      })
+      .catch(() => {
+        // Badge is best-effort — keep the last known count on failure.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentPath]);
 
   return (
     <Box
@@ -255,6 +287,34 @@ export default function Navbar({
             >
               Login
             </Button>
+          )}
+
+          {isAuthenticated && (
+            <Box position="relative">
+              <IconButton
+                aria-label="Notifications"
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push(NOTIFICATIONS_PATH)}
+              >
+                <MdiIcon path={mdiBellOutline} size={0.9} />
+              </IconButton>
+              {unreadCount > 0 && (
+                <Circle
+                  size="16px"
+                  bg="blue.500"
+                  color="white"
+                  fontSize="10px"
+                  fontWeight="bold"
+                  position="absolute"
+                  top="0"
+                  right="0"
+                  pointerEvents="none"
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Circle>
+              )}
+            </Box>
           )}
 
           {isAuthenticated && (

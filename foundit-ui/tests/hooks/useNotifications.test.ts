@@ -1,0 +1,143 @@
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+} from '@/lib/api/notifications';
+import { useNotifications } from '@/hooks/useNotifications';
+import type { AppNotification } from '@/types/notifications';
+
+vi.mock('@/lib/api/notifications', () => ({
+  fetchNotifications: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+  markNotificationRead: vi.fn(),
+}));
+
+const fetchNotificationsMock = vi.mocked(fetchNotifications);
+const markNotificationReadMock = vi.mocked(markNotificationRead);
+const markAllNotificationsReadMock = vi.mocked(markAllNotificationsRead);
+
+const unread: AppNotification = {
+  notificationId: 'n-1',
+  type: 'claim_status_update',
+  title: 'New Claim Submitted',
+  message: 'A claim was submitted by a student.',
+  referenceType: 'claim',
+  referenceId: 'c-1',
+  isRead: false,
+  createdAt: '2026-07-10T12:00:00.000Z',
+};
+
+const read: AppNotification = {
+  notificationId: 'n-2',
+  type: 'match_found',
+  title: 'Match found',
+  message: 'We found a possible match for your claim.',
+  referenceType: 'claim',
+  referenceId: 'c-2',
+  isRead: true,
+  createdAt: '2026-07-08T12:00:00.000Z',
+};
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  fetchNotificationsMock.mockResolvedValue({
+    notifications: [unread, read],
+    unreadCount: 1,
+  });
+});
+
+describe('useNotifications', () => {
+  it('loads notifications and the unread count on mount', async () => {
+    const { result } = renderHook(() => useNotifications());
+
+    expect(result.current.isLoading).toBe(true);
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.notifications).toHaveLength(2);
+    expect(result.current.unreadCount).toBe(1);
+    expect(result.current.error).toBeNull();
+  });
+
+  it('exposes an error message when loading fails', async () => {
+    fetchNotificationsMock.mockRejectedValueOnce(new Error('boom'));
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(result.current.error).toBe('boom');
+    expect(result.current.notifications).toHaveLength(0);
+  });
+
+  it('optimistically marks a notification read', async () => {
+    markNotificationReadMock.mockResolvedValue({ ...unread, isRead: true });
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markRead('n-1'));
+
+    expect(
+      result.current.notifications.find((n) => n.notificationId === 'n-1')
+        ?.isRead
+    ).toBe(true);
+    expect(result.current.unreadCount).toBe(0);
+    expect(markNotificationReadMock).toHaveBeenCalledWith('n-1');
+  });
+
+  it('skips the request for an already-read notification', async () => {
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markRead('n-2'));
+
+    expect(markNotificationReadMock).not.toHaveBeenCalled();
+  });
+
+  it('refetches to roll back when marking read fails', async () => {
+    markNotificationReadMock.mockRejectedValue(new Error('offline'));
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markRead('n-1'));
+
+    // Initial load + rollback refetch.
+    await waitFor(() =>
+      expect(fetchNotificationsMock).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() => expect(result.current.unreadCount).toBe(1));
+    expect(
+      result.current.notifications.find((n) => n.notificationId === 'n-1')
+        ?.isRead
+    ).toBe(false);
+  });
+
+  it('marks everything read via markAllRead', async () => {
+    markAllNotificationsReadMock.mockResolvedValue({ updatedCount: 1 });
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markAllRead());
+
+    expect(result.current.notifications.every((n) => n.isRead)).toBe(true);
+    expect(result.current.unreadCount).toBe(0);
+    expect(markAllNotificationsReadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips markAllRead when nothing is unread', async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      notifications: [read],
+      unreadCount: 0,
+    });
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markAllRead());
+
+    expect(markAllNotificationsReadMock).not.toHaveBeenCalled();
+  });
+});

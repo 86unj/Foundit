@@ -2,6 +2,7 @@
 
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import NotificationFeed from '@/components/NotificationFeed';
 import { FixedPageBackground } from '@/components/PageBackground';
 import TextInput from '@/components/TextInput';
 import { useProfileForm } from '@/hooks/useProfileForm';
@@ -272,35 +273,7 @@ function ProfileSettingsContent() {
                   )}
                 </>
               ) : (
-                // TODO: Replace this stub once PATCH /api/users/me/notifications is implemented.
-                // Render notification preferences here (e.g. emailNotificationOptIn toggle).
-                // Current value is fetched via GET /api/users/me → response.emailNotificationOptIn
-                // and saved via PATCH /api/users/me/notifications → { emailNotificationOptIn: boolean }
-                <Flex
-                  direction="column"
-                  align="center"
-                  justify="center"
-                  gap={3}
-                  py={16}
-                  color="gray.400"
-                >
-                  <Text
-                    fontSize="2xl"
-                    fontWeight="bold"
-                    color="gray.900"
-                    alignSelf="flex-start"
-                  >
-                    Notifications
-                  </Text>
-                  <Text
-                    fontSize="sm"
-                    color="gray.500"
-                    textAlign="center"
-                    mt={8}
-                  >
-                    Notification settings are not yet available.
-                  </Text>
-                </Flex>
+                <NotificationFeed />
               )}
             </Stack>
           </HStack>

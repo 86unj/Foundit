@@ -14,6 +14,8 @@ interface NotificationCardProps {
   message: string;
   isRead?: boolean;
   createdAt: string;
+  /** Fires when the card is clicked — used to mark the notification read. */
+  onClick?: () => void;
 }
 
 export default function NotificationCard({
@@ -21,6 +23,7 @@ export default function NotificationCard({
   message,
   isRead = false,
   createdAt,
+  onClick,
 }: NotificationCardProps) {
   return (
     <Flex
@@ -31,8 +34,12 @@ export default function NotificationCard({
       boxShadow="sm"
       borderRadius="sm"
       overflow="hidden"
+      role={onClick ? 'button' : undefined}
+      cursor={onClick ? 'pointer' : undefined}
+      _hover={onClick ? { bg: 'gray.50' } : undefined}
+      onClick={onClick}
     >
-      <Box w="4px" bg={isRead ? 'transparent' : '#2F80ED'} />
+      <Box w="4px" bg={isRead ? 'transparent' : 'blue.500'} />
       <HStack w="full" px={6} py={4} gap={4} align="center">
         {/* Read / unread icon */}
         {isRead ? (
@@ -49,13 +56,7 @@ export default function NotificationCard({
         )}
 
         <VStack align="start" gap={1} flex={1}>
-          <Text
-            as="a"
-            fontSize="sm"
-            fontWeight="semibold"
-            color="fg"
-            textDecoration="underline"
-          >
+          <Text fontSize="sm" fontWeight="semibold" color="fg">
             {title}
           </Text>
 
