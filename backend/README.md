@@ -138,6 +138,7 @@ src/
 │   ├── auth.ts                 # POST /api/auth/login|register (done) · refresh|logout (stub)
 │   ├── claims.ts               # Claim lifecycle routes
 │   ├── users.ts                # GET|PUT /api/users/me (done) · PATCH stubs
+│   ├── notifications.ts        # GET list · PATCH read|unread|read-all (done)
 │   └── admin/
 │       └── users.ts            # Admin user management stubs
 ├── db.ts                       # Prisma client singleton
@@ -286,12 +287,20 @@ A daily cron job (`expireRetainedItems`) also transitions `stored → expired` w
 
 ### Notifications
 
-| Method | Path                                 | Auth    | Status  | Description                                 |
-| ------ | ------------------------------------ | ------- | ------- | ------------------------------------------- |
-| GET    | `/api/notifications`                 | student | Planned | List notifications for current user         |
-| GET    | `/api/notifications/stats`           | student | Planned | Get notification stats such as unread count |
-| PATCH  | `/api/notifications`                 | student | Planned | Mark all notifications as read              |
-| PATCH  | `/api/notifications/:notificationId` | student | Planned | Mark a single notification as read          |
+| Method | Path                                        | Auth | Status | Description                                                                              |
+| ------ | ------------------------------------------- | ---- | ------ | ---------------------------------------------------------------------------------------- |
+| GET    | `/api/notifications`                        | any  | Done   | Current user's notifications (newest first) + `unreadCount`; `?unreadOnly=true` filters   |
+| PATCH  | `/api/notifications/:notificationId/read`   | any  | Done   | Mark one of the caller's notifications read (404 if not owned)                            |
+| PATCH  | `/api/notifications/:notificationId/unread` | any  | Done   | Mark one of the caller's notifications unread (404 if not owned)                          |
+| PATCH  | `/api/notifications/read-all`               | any  | Done   | Mark all of the caller's notifications read; returns `updatedCount`                       |
+
+Notifications are per-recipient rows, always scoped to the caller's JWT. They are
+created transactionally by: claim submission and cancellation (fan-out to active
+security/admin at the claim's campus), claim status changes and match approval
+(to the student), the retention cron (auto-reject notices + per-campus
+`item_expiring`), and found-item report submission (`report_confirmation` to the
+finder). The unread-count "stats" endpoint from the original plan was folded into
+`GET /api/notifications` as `unreadCount`.
 
 ### Audit Logs
 
