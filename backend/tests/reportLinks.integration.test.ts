@@ -307,12 +307,16 @@ describe('report links routes', () => {
 
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
 
+    const notificationCreate = vi.fn();
     vi.mocked(prisma.$transaction).mockImplementationOnce(async (callback) => {
       return callback({
         campus: {
           findUnique: vi.fn().mockResolvedValueOnce({
             retentionDays: 30,
           }),
+        },
+        notification: {
+          create: notificationCreate,
         },
         foundItemReport: {
           create: vi.fn().mockResolvedValueOnce({
@@ -363,5 +367,14 @@ describe('report links routes', () => {
     expect(res.body.reportId).toBe('report-1');
     expect(res.body.itemId).toBe('item-1');
     expect(res.body.status).toBe('linked_to_item');
+    expect(notificationCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        recipientId: 'student-1',
+        type: 'report_confirmation',
+        title: 'Report received',
+        referenceType: 'item',
+        referenceId: 'item-1',
+      }),
+    });
   });
 });

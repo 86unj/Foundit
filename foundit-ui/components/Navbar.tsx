@@ -37,6 +37,7 @@
 import {
   Box,
   Button as ChakraButton,
+  Circle,
   Flex,
   HStack,
   IconButton,
@@ -47,12 +48,20 @@ import {
 } from '@chakra-ui/react';
 import { Button } from './ui/Button';
 import MdiIcon from '@mdi/react';
-import { mdiAccountCircle, mdiChevronDown, mdiClose, mdiMenu } from '@mdi/js';
+import {
+  mdiAccountCircle,
+  mdiBellOutline,
+  mdiChevronDown,
+  mdiClose,
+  mdiMenu,
+} from '@mdi/js';
 import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { signOut } from '@/utils/auth';
-import type { UserRole } from '@/utils/routes';
+import { fetchNotifications } from '@/lib/api/notifications';
+import { useNotificationsBadge } from '@/components/NotificationsProvider';
+import { NOTIFICATIONS_PATH, type UserRole } from '@/utils/routes';
 
 /**
  * Partial view of the user object returned by GET /api/users/me.
@@ -101,7 +110,7 @@ export function Dropdown({ variant, items, userName }: DropdownProps) {
     switch (variant) {
       case 'user':
         return (
-          <ChakraButton variant="ghost" size="sm" px={2} ml={2}>
+          <ChakraButton variant="ghost" size="sm" px={0}>
             <HStack gap={2}>
               <Text fontSize="md" fontWeight="medium" color="gray.900">
                 {userName}
@@ -175,12 +184,12 @@ const userMenuItemsByVariant: Record<
 > = {
   student: [
     { label: 'Profile', href: '/profile' },
-    { label: 'Notifications', href: '/profile?tab=notifications' },
+    { label: 'Notifications', href: NOTIFICATIONS_PATH },
     { label: 'Sign Out', onClick: signOut, danger: true },
   ],
   security: [
     { label: 'Profile', href: '/profile' },
-    { label: 'Notifications', href: '/profile?tab=notifications' },
+    { label: 'Notifications', href: NOTIFICATIONS_PATH },
     { label: 'Sign Out', onClick: signOut, danger: true },
   ],
 };
@@ -200,6 +209,40 @@ export default function Navbar({
   const navLinks = navLinksByVariant[variant];
   const isAuthenticated = variant !== 'guest';
   const userMenuItems = isAuthenticated ? userMenuItemsByVariant[variant] : [];
+
+  // Unread badge for the bell. When a NotificationsProvider is mounted the
+  // count is shared with the feed and updates live as cards are marked read;
+  // otherwise fall back to local state refreshed on route change.
+  const badge = useNotificationsBadge();
+  const badgeSetUnreadCount = badge?.setUnreadCount ?? null;
+  const [selfUnreadCount, setSelfUnreadCount] = useState(0);
+  const unreadCount = badge ? badge.unreadCount : selfUnreadCount;
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    let cancelled = false;
+    fetchNotifications()
+      .then((data) => {
+        if (cancelled) {
+          return;
+        }
+        if (badgeSetUnreadCount) {
+          badgeSetUnreadCount(data.unreadCount);
+        } else {
+          setSelfUnreadCount(data.unreadCount);
+        }
+      })
+      .catch(() => {
+        // Badge is best-effort — keep the last known count on failure.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, currentPath, badgeSetUnreadCount]);
 
   return (
     <Box
@@ -255,6 +298,36 @@ export default function Navbar({
             >
               Login
             </Button>
+          )}
+
+          {isAuthenticated && (
+            <Box position="relative">
+              <IconButton
+                aria-label="Notifications"
+                variant="ghost"
+                size="sm"
+                px={0}
+                minW="auto"
+                onClick={() => router.push(NOTIFICATIONS_PATH)}
+              >
+                <MdiIcon path={mdiBellOutline} size={0.9} />
+              </IconButton>
+              {unreadCount > 0 && (
+                <Circle
+                  size="16px"
+                  bg="blue.500"
+                  color="white"
+                  fontSize="10px"
+                  fontWeight="bold"
+                  position="absolute"
+                  top="-6px"
+                  right="-8px"
+                  pointerEvents="none"
+                >
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </Circle>
+              )}
+            </Box>
           )}
 
           {isAuthenticated && (
