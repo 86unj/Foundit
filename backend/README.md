@@ -287,12 +287,12 @@ A daily cron job (`expireRetainedItems`) also transitions `stored → expired` w
 
 ### Notifications
 
-| Method | Path                                        | Auth | Status | Description                                                                              |
-| ------ | ------------------------------------------- | ---- | ------ | ---------------------------------------------------------------------------------------- |
-| GET    | `/api/notifications`                        | any  | Done   | Current user's notifications (newest first) + `unreadCount`; `?unreadOnly=true` filters   |
-| PATCH  | `/api/notifications/:notificationId/read`   | any  | Done   | Mark one of the caller's notifications read (404 if not owned)                            |
-| PATCH  | `/api/notifications/:notificationId/unread` | any  | Done   | Mark one of the caller's notifications unread (404 if not owned)                          |
-| PATCH  | `/api/notifications/read-all`               | any  | Done   | Mark all of the caller's notifications read; returns `updatedCount`                       |
+| Method | Path                                        | Auth | Status | Description                                                                             |
+| ------ | ------------------------------------------- | ---- | ------ | --------------------------------------------------------------------------------------- |
+| GET    | `/api/notifications`                        | any  | Done   | Current user's notifications (newest first) + `unreadCount`; `?unreadOnly=true` filters |
+| PATCH  | `/api/notifications/:notificationId/read`   | any  | Done   | Mark one of the caller's notifications read (404 if not owned)                          |
+| PATCH  | `/api/notifications/:notificationId/unread` | any  | Done   | Mark one of the caller's notifications unread (404 if not owned)                        |
+| PATCH  | `/api/notifications/read-all`               | any  | Done   | Mark all of the caller's notifications read; returns `updatedCount`                     |
 
 Notifications are per-recipient rows, always scoped to the caller's JWT. They are
 created transactionally by: claim submission and cancellation (fan-out to active
