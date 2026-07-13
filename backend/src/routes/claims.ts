@@ -11,6 +11,11 @@ import { prisma } from '../db';
 import authenticate from '../middleware/authenticate';
 import requireRole from '../middleware/requireRole';
 import { writeAuditLog } from '../utils/auditLog';
+import {
+  createClaimStatusUpdateInput,
+  fanOutToCampusSecurity,
+  shortClaimRef,
+} from '../lib/notifications';
 import { scheduleClaimSearchIndexIngest } from '../lib/matching/ingest';
 import { refreshClaimMatchSuggestions } from '../lib/matching/suggestions';
 import { resolveImageUrl } from '../utils/imageUrl';
@@ -493,48 +498,38 @@ function createClaimStatusNotificationInput(
   claim: ClaimDetailRow,
   nextStatus: ClaimStatus
 ) {
-  const statusText = nextStatus.replace('_', ' ');
-  // Prefer the item name; fall back to a short reference — the raw UUID is
-  // too noisy for a notification message (full id stays in referenceId).
-  const claimLabel = claim.itemName
-    ? `Your claim for "${claim.itemName}"`
-    : `Your claim #${claim.claimId.slice(0, 8).toUpperCase()}`;
-  return {
-    recipientId: claim.studentId,
-    type: NotificationType.claim_status_update,
-    title: `Claim status updated: ${statusText}`,
-    message: `${claimLabel} is now ${statusText}.`,
-    referenceType: 'claim',
-    referenceId: claim.claimId,
-  } as const;
+  return createClaimStatusUpdateInput(claim, nextStatus.replace('_', ' '));
 }
 
 async function notifySecurityOfNewClaim(
   tx: Prisma.TransactionClient,
   claim: { claimId: string; campusId: string }
 ) {
-  const recipients = await tx.user.findMany({
-    where: {
-      role: { in: [UserRole.security, UserRole.admin] },
-      campusId: claim.campusId,
-      isActive: true,
-    },
-    select: { userId: true },
+  await fanOutToCampusSecurity(tx, claim.campusId, {
+    type: NotificationType.claim_status_update,
+    title: 'New Claim Submitted',
+    message: 'A claim was submitted by a student.',
+    referenceType: 'claim',
+    referenceId: claim.claimId,
   });
+}
 
-  if (recipients.length === 0) {
-    return;
-  }
+async function notifySecurityOfClaimCancellation(
+  tx: Prisma.TransactionClient,
+  claim: { claimId: string; campusId: string; itemName: string | null }
+) {
+  // The claim row is deleted right after this runs, so the message carries
+  // the item name — referenceId is kept only for traceability.
+  const claimLabel = claim.itemName
+    ? `their claim for "${claim.itemName}"`
+    : `claim ${shortClaimRef(claim.claimId)}`;
 
-  await tx.notification.createMany({
-    data: recipients.map(({ userId }) => ({
-      recipientId: userId,
-      type: NotificationType.claim_status_update,
-      title: 'New Claim Submitted',
-      message: 'A claim was submitted by a student.',
-      referenceType: 'claim',
-      referenceId: claim.claimId,
-    })),
+  await fanOutToCampusSecurity(tx, claim.campusId, {
+    type: NotificationType.claim_status_update,
+    title: 'Claim Cancelled',
+    message: `A student cancelled ${claimLabel}.`,
+    referenceType: 'claim',
+    referenceId: claim.claimId,
   });
 }
 
@@ -919,14 +914,15 @@ router.delete(
         return;
       }
 
-      await prisma.$transaction([
-        prisma.matchSuggestion.deleteMany({
+      await prisma.$transaction(async (tx) => {
+        await notifySecurityOfClaimCancellation(tx, claim);
+        await tx.matchSuggestion.deleteMany({
           where: { claimId: claim.claimId },
-        }),
-        prisma.claim.delete({
+        });
+        await tx.claim.delete({
           where: { claimId: claim.claimId },
-        }),
-      ]);
+        });
+      });
 
       await writeAuditLog({
         actorId: actor.userId,

@@ -1,7 +1,16 @@
 import cron from 'node-cron';
-import { ClaimStatus, ItemStatus, MatchStatus } from '@prisma/client';
+import {
+  ClaimStatus,
+  ItemStatus,
+  MatchStatus,
+  NotificationType,
+} from '@prisma/client';
 import { prisma } from '../db';
 import { writeAuditLog } from '../utils/auditLog';
+import {
+  createClaimStatusUpdateInput,
+  fanOutToCampusSecurity,
+} from '../lib/notifications';
 
 const AUTO_EXPIRE_REJECTION_REASON = 'Item retention period ended.';
 
@@ -47,6 +56,7 @@ export async function expireDueItems(): Promise<number> {
       select: {
         itemId: true,
         retentionExpiryDate: true,
+        campusId: true,
       },
     });
 
@@ -55,6 +65,22 @@ export async function expireDueItems(): Promise<number> {
     }
 
     const eligibleItemIds = eligibleItems.map((item) => item.itemId);
+
+    // Snapshot the claims we're about to auto-reject so their students can
+    // be notified after the updateMany below.
+    const affectedClaims = await tx.claim.findMany({
+      where: {
+        itemId: { in: eligibleItemIds },
+        status: {
+          in: [ClaimStatus.submitted, ClaimStatus.under_review],
+        },
+      },
+      select: {
+        claimId: true,
+        studentId: true,
+        itemName: true,
+      },
+    });
 
     await tx.claim.updateMany({
       where: {
@@ -90,6 +116,32 @@ export async function expireDueItems(): Promise<number> {
       },
       data: { status: MatchStatus.dismissed },
     });
+
+    // Notify students whose claims were auto-rejected.
+    if (affectedClaims.length > 0) {
+      await tx.notification.createMany({
+        data: affectedClaims.map((claim) =>
+          createClaimStatusUpdateInput(claim, 'rejected')
+        ),
+      });
+    }
+
+    // Notify security at each affected campus, batched per campus.
+    const expiredCountByCampus = new Map<string, number>();
+    for (const item of eligibleItems) {
+      expiredCountByCampus.set(
+        item.campusId,
+        (expiredCountByCampus.get(item.campusId) ?? 0) + 1
+      );
+    }
+
+    for (const [campusId, count] of expiredCountByCampus) {
+      await fanOutToCampusSecurity(tx, campusId, {
+        type: NotificationType.item_expiring,
+        title: 'Item retention expired',
+        message: `${count} stored item${count === 1 ? '' : 's'} reached the end of retention and ${count === 1 ? 'was' : 'were'} marked expired.`,
+      });
+    }
 
     await Promise.all(
       eligibleItems.map((item) =>

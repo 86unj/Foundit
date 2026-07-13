@@ -1,6 +1,7 @@
 import {
   FoundReportStatus,
   ItemStatus,
+  NotificationType,
   Prisma,
   UserRole,
 } from '@prisma/client';
@@ -676,6 +677,18 @@ router.post(
         if (updateResult.count !== 1) {
           throw new Error('REPORT_LINK_CONFLICT');
         }
+
+        // Confirm receipt to the finder in the same transaction.
+        await tx.notification.create({
+          data: {
+            recipientId: req.user!.user_id,
+            type: NotificationType.report_confirmation,
+            title: 'Report received',
+            message: `Thanks! Your found-item report for "${title}" was received and the item is now in storage.`,
+            referenceType: 'item',
+            referenceId: item.itemId,
+          },
+        });
 
         return { report: linkedReport, itemId: item.itemId };
       });

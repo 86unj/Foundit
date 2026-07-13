@@ -170,6 +170,51 @@ describe('notifications routes', () => {
     );
   });
 
+  test('PATCH /api/notifications/:id/unread marks an owned notification unread', async () => {
+    (prisma.notification.findFirst as Mock).mockResolvedValue({
+      notificationId,
+    });
+    (prisma.notification.update as Mock).mockResolvedValue({
+      ...unreadNotification,
+      isRead: false,
+    });
+
+    const res = await request(createTestApp()).patch(
+      `/api/notifications/${notificationId}/unread`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.isRead).toBe(false);
+    expect(prisma.notification.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { notificationId },
+        data: { isRead: false },
+      })
+    );
+  });
+
+  test("PATCH /api/notifications/:id/unread returns 404 for another user's notification", async () => {
+    (prisma.notification.findFirst as Mock).mockResolvedValue(null);
+
+    const res = await request(createTestApp()).patch(
+      `/api/notifications/${notificationId}/unread`
+    );
+
+    expect(res.status).toBe(404);
+    expect(res.body.code).toBe('NOTIFICATION_NOT_FOUND');
+    expect(prisma.notification.update).not.toHaveBeenCalled();
+  });
+
+  test('PATCH /api/notifications/:id/unread rejects a non-uuid id', async () => {
+    const res = await request(createTestApp()).patch(
+      '/api/notifications/not-a-uuid/unread'
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(prisma.notification.update).not.toHaveBeenCalled();
+  });
+
   test("PATCH /api/notifications/read-all marks all of the user's unread notifications read", async () => {
     (prisma.notification.updateMany as Mock).mockResolvedValue({ count: 4 });
 

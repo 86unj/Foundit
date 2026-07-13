@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
 import authenticate from '../middleware/authenticate';
 import {
@@ -147,32 +147,13 @@ router.patch('/read-all', authenticate, async (req, res, next) => {
   }
 });
 
-/**
- * @openapi
- * /api/notifications/{notificationId}/read:
- *   patch:
- *     summary: Mark one of the authenticated user's notifications as read
- *     tags: [Notifications]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: notificationId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       '200':
- *         description: The updated notification
- *       '400':
- *         description: Invalid notification id
- *       '401':
- *         description: Missing or invalid access token
- *       '404':
- *         description: Notification not found for this user
- */
-router.patch('/:notificationId/read', authenticate, async (req, res, next) => {
+// Shared by /read and /unread — same ownership check, opposite flag.
+async function setReadState(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  isRead: boolean
+) {
   try {
     const params = notificationParamsSchema.safeParse(req.params);
     if (!params.success) {
@@ -200,7 +181,7 @@ router.patch('/:notificationId/read', authenticate, async (req, res, next) => {
 
     const updated = await prisma.notification.update({
       where: { notificationId },
-      data: { isRead: true },
+      data: { isRead },
       select: notificationSelect,
     });
 
@@ -208,6 +189,64 @@ router.patch('/:notificationId/read', authenticate, async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}
+
+/**
+ * @openapi
+ * /api/notifications/{notificationId}/read:
+ *   patch:
+ *     summary: Mark one of the authenticated user's notifications as read
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: notificationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       '200':
+ *         description: The updated notification
+ *       '400':
+ *         description: Invalid notification id
+ *       '401':
+ *         description: Missing or invalid access token
+ *       '404':
+ *         description: Notification not found for this user
+ */
+router.patch('/:notificationId/read', authenticate, (req, res, next) =>
+  setReadState(req, res, next, true)
+);
+
+/**
+ * @openapi
+ * /api/notifications/{notificationId}/unread:
+ *   patch:
+ *     summary: Mark one of the authenticated user's notifications as unread
+ *     tags: [Notifications]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: notificationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       '200':
+ *         description: The updated notification
+ *       '400':
+ *         description: Invalid notification id
+ *       '401':
+ *         description: Missing or invalid access token
+ *       '404':
+ *         description: Notification not found for this user
+ */
+router.patch('/:notificationId/unread', authenticate, (req, res, next) =>
+  setReadState(req, res, next, false)
+);
 
 export default router;

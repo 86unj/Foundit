@@ -307,6 +307,53 @@ describe('claims routes', () => {
     });
   });
 
+  test('DELETE /api/claims/:claimId notifies same-campus security of the cancellation', async () => {
+    mocks.authUser = { user_id: 'student-1', role: UserRole.student };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce(claimRow);
+
+    const tx = {
+      user: {
+        findMany: vi.fn().mockResolvedValue([{ userId: 'security-1' }]),
+      },
+      notification: {
+        createMany: vi.fn(),
+      },
+      matchSuggestion: {
+        deleteMany: vi.fn(),
+      },
+      claim: {
+        delete: vi.fn(),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app).delete(
+      '/api/claims/550e8400-e29b-41d4-a716-446655440000'
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(true);
+    expect(tx.notification.createMany).toHaveBeenCalledWith({
+      data: [
+        expect.objectContaining({
+          recipientId: 'security-1',
+          title: 'Claim Cancelled',
+          message: 'A student cancelled their claim for "iPhone 15".',
+          referenceType: 'claim',
+          referenceId: claimRow.claimId,
+        }),
+      ],
+    });
+    expect(tx.claim.delete).toHaveBeenCalledWith({
+      where: { claimId: claimRow.claimId },
+    });
+  });
+
   test('POST /api/claims creates no notifications when the campus has no security staff', async () => {
     mocks.authUser = { user_id: 'student-1', role: UserRole.student };
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
