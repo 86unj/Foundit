@@ -110,7 +110,7 @@ export function Dropdown({ variant, items, userName }: DropdownProps) {
     switch (variant) {
       case 'user':
         return (
-          <ChakraButton variant="ghost" size="sm" px={2} ml={2}>
+          <ChakraButton variant="ghost" size="sm" px={0}>
             <HStack gap={2}>
               <Text fontSize="md" fontWeight="medium" color="gray.900">
                 {userName}
@@ -306,6 +306,8 @@ export default function Navbar({
                 aria-label="Notifications"
                 variant="ghost"
                 size="sm"
+                px={0}
+                minW="auto"
                 onClick={() => router.push(NOTIFICATIONS_PATH)}
               >
                 <MdiIcon path={mdiBellOutline} size={0.9} />
@@ -318,8 +320,8 @@ export default function Navbar({
                   fontSize="10px"
                   fontWeight="bold"
                   position="absolute"
-                  top="0"
-                  right="0"
+                  top="-6px"
+                  right="-8px"
                   pointerEvents="none"
                 >
                   {unreadCount > 9 ? '9+' : unreadCount}
