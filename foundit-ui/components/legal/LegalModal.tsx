@@ -5,11 +5,25 @@ import { Dialog, Portal, Stack, Heading, Text, Button } from '@chakra-ui/react';
 interface LegalModalProps {
   open: boolean;
   onClose: () => void;
+  onAgree?: () => void;
+  onDisagree?: () => void;
 }
 
-export default function LegalModal({ open, onClose }: LegalModalProps) {
+export default function LegalModal({
+  open,
+  onClose,
+  onAgree,
+  onDisagree,
+}: LegalModalProps) {
   return (
-    <Dialog.Root open={open} onOpenChange={(e) => !e.open && onClose()}>
+    <Dialog.Root
+      open={open}
+      onOpenChange={(e) => {
+        if (!e.open) {
+          onClose();
+        }
+      }}
+    >
       <Portal>
         <Dialog.Backdrop />
 
@@ -128,7 +142,16 @@ export default function LegalModal({ open, onClose }: LegalModalProps) {
             </Dialog.Body>
 
             <Dialog.Footer>
-              <Button onClick={onClose}>Close</Button>
+              <Button
+                onClick={onDisagree}
+                variant="outline"
+                bg="white"
+                color="black"
+              >
+                Disagree
+              </Button>
+
+              <Button onClick={onAgree}>Agree</Button>
             </Dialog.Footer>
           </Dialog.Content>
         </Dialog.Positioner>
