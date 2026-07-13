@@ -52,6 +52,20 @@ export default function SignUpPage() {
 
   const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
 
+  const handleLegalModalClose = () => {
+    setIsLegalModalOpen(false);
+  };
+
+  const handleLegalAgree = () => {
+    handleLegalAgreementChange(true);
+    setIsLegalModalOpen(false);
+  };
+
+  const handleLegalDisagree = () => {
+    handleLegalAgreementChange(false);
+    setIsLegalModalOpen(false);
+  };
+
   return (
     <Box minH="100vh" display="flex" flexDirection="column" position="relative">
       <FixedPageBackground overlay />
@@ -157,7 +171,7 @@ export default function SignUpPage() {
               <Checkbox.Root
                 checked={agreedToLegal}
                 onCheckedChange={(e) => {
-                  handleLegalAgreementChange(!!e.checked);
+                  handleLegalAgreementChange(e.checked === true);
                 }}
               >
                 <Checkbox.HiddenInput />
@@ -169,7 +183,9 @@ export default function SignUpPage() {
 
               <LegalModal
                 open={isLegalModalOpen}
-                onClose={() => setIsLegalModalOpen(false)}
+                onClose={handleLegalModalClose}
+                onAgree={handleLegalAgree}
+                onDisagree={handleLegalDisagree}
               />
             </Stack>
 

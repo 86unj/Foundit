@@ -432,8 +432,6 @@ router.get('/:token/validate', validateRateLimiter, async (req, res, next) => {
  *   post:
  *     summary: Submit a found-item report from a valid report-link token
  *     tags: [Report Links]
- *     security:
- *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: token
@@ -469,10 +467,6 @@ router.get('/:token/validate', validateRateLimiter, async (req, res, next) => {
  *         description: Found-item report created and report link consumed
  *       '400':
  *         description: Validation error
- *       '401':
- *         description: Missing or invalid access token
- *       '403':
- *         description: Student role required
  *       '404':
  *         description: Report link not found
  *       '409':
@@ -483,8 +477,6 @@ router.get('/:token/validate', validateRateLimiter, async (req, res, next) => {
 router.post(
   '/:token/submit',
   submitRateLimiter,
-  authenticate,
-  requireRole('student'),
   validate(submitFoundItemReportSchema),
   async (req, res, next) => {
     try {
