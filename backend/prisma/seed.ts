@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main() {
   // ── Core data (always seeded) ─────────────────────────────────────────────
 
-  const [newnham, senecaYork] = await Promise.all([
+  const [newnham, senecaYork, king] = await Promise.all([
     prisma.campus.upsert({
       where: { campusName: 'Newnham' },
       update: {},
@@ -147,7 +147,7 @@ async function main() {
         reportLinkId: reportLink.linkId,
         finderId: alice.userId,
         itemDescription: 'White AirPods Pro case with small sticker',
-        category: 'electronics',
+        category: 'Electronics',
         locationFound: 'Near Tim Hortons, Newnham Campus',
         dateFound: new Date('2026-05-10'),
         additionalNotes: 'Found it on a bench outside Tim Hortons',
@@ -164,7 +164,7 @@ async function main() {
     await prisma.item.create({
       data: {
         campusId: newnham.campusId,
-        category: 'electronics',
+        category: 'Electronics',
         title: 'AirPods Pro - White Case',
         descriptionPublic: 'White AirPods Pro case with sticker',
         descriptionInternal:
@@ -182,14 +182,14 @@ async function main() {
 
   // Sample claim submitted by bob
   const existingClaim = await prisma.claim.findFirst({
-    where: { studentId: bob.userId, category: 'electronics' },
+    where: { studentId: bob.userId, category: 'Electronics' },
   });
   if (!existingClaim) {
     await prisma.claim.create({
       data: {
         studentId: bob.userId,
         campusId: newnham.campusId,
-        category: 'electronics',
+        category: 'Electronics',
         description:
           'Lost my AirPods Pro with white case. Has a small round sticker on the lid.',
         dateLost: new Date('2026-05-10'),
@@ -199,7 +199,118 @@ async function main() {
     });
   }
 
-  console.log('Dev sample data: report link, found report, item, claim');
+  let hoodieItem = await prisma.item.findFirst({
+    where: { registeredBy: carol.userId, title: 'Black Hoodie' },
+  });
+  if (!hoodieItem) {
+    hoodieItem = await prisma.item.create({
+      data: {
+        campusId: senecaYork.campusId,
+        category: 'Clothing',
+        title: 'Black Hoodie',
+        descriptionPublic: 'Black Seneca-branded hoodie, size M',
+        descriptionInternal:
+          'Black Seneca-branded hoodie, size M. Small tear on the left sleeve.',
+        color: 'black',
+        locationFound: 'Cafeteria',
+        dateFound: new Date('2026-05-18'),
+        status: 'stored',
+        registeredBy: carol.userId,
+        retentionExpiryDate: new Date('2026-06-17'),
+      },
+    });
+  }
+
+  let chargerItem = await prisma.item.findFirst({
+    where: { registeredBy: carol.userId, title: 'Apple USB-C Charger' },
+  });
+  if (!chargerItem) {
+    chargerItem = await prisma.item.create({
+      data: {
+        campusId: newnham.campusId,
+        category: 'Electronics',
+        title: 'Apple USB-C Charger',
+        descriptionPublic: 'Apple 67W USB-C power adapter',
+        descriptionInternal:
+          'Apple 67W USB-C power adapter, no cable attached.',
+        color: 'white',
+        brand: 'Apple',
+        locationFound: 'Room A4040',
+        dateFound: new Date('2026-05-10'),
+        status: 'stored',
+        registeredBy: carol.userId,
+        retentionExpiryDate: new Date('2026-06-09'),
+      },
+    });
+  }
+
+  const sampleClaims = [
+    {
+      studentId: alice.userId,
+      campusId: newnham.campusId,
+      category: 'Electronics',
+      description:
+        'Silver MacBook Pro 14" with a Seneca sticker on the lid. Lost near the library study area.',
+      dateLost: new Date('2026-05-20'),
+      locationLost: 'Library — 2nd floor study area',
+      status: 'submitted' as const,
+      itemId: null,
+    },
+    {
+      studentId: alice.userId,
+      campusId: king.campusId,
+      category: 'Accessories',
+      description: 'White AirPods Pro case with a blue keychain attached.',
+      dateLost: new Date('2026-05-15'),
+      locationLost: 'Gym locker room',
+      status: 'rejected' as const,
+      itemId: null,
+      reviewedBy: carol.userId,
+      reviewedAt: new Date('2026-05-19T14:30:00.000Z'),
+      rejectionReason: 'No matching found item in storage.',
+    },
+    {
+      studentId: bob.userId,
+      campusId: senecaYork.campusId,
+      category: 'Clothing',
+      description:
+        'Black Seneca-branded hoodie, size M. Has a small tear on the left sleeve.',
+      dateLost: new Date('2026-05-18'),
+      locationLost: 'Cafeteria',
+      status: 'approved' as const,
+      itemId: hoodieItem.itemId,
+      reviewedBy: carol.userId,
+      reviewedAt: new Date('2026-05-22T10:00:00.000Z'),
+    },
+    {
+      studentId: alice.userId,
+      campusId: newnham.campusId,
+      category: 'Electronics',
+      description: 'Apple 67W USB-C power adapter, no cable attached.',
+      dateLost: new Date('2026-05-10'),
+      locationLost: 'Room A4040',
+      status: 'under_review' as const,
+      itemId: chargerItem.itemId,
+      reviewedBy: carol.userId,
+      reviewedAt: new Date('2026-05-17T09:15:00.000Z'),
+    },
+  ];
+
+  for (const claim of sampleClaims) {
+    const existing = await prisma.claim.findFirst({
+      where: {
+        studentId: claim.studentId,
+        category: claim.category,
+        locationLost: claim.locationLost,
+      },
+    });
+
+    if (!existing) {
+      await prisma.claim.create({ data: claim });
+    }
+  }
+
+  console.log('Dev sample data: report link, found report, items, claims');
 }
 
 main()
