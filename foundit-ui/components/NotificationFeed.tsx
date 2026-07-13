@@ -53,7 +53,7 @@ export default function NotificationFeed() {
           aria-pressed={showUnreadOnly}
           onClick={() => setShowUnreadOnly((prev) => !prev)}
         >
-          Unread ({unreadCount})
+          Unread ( {unreadCount} )
         </Text>
         <Text
           as="button"
