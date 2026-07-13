@@ -5,11 +5,17 @@
  *
  * Students see it in the profile page's Notifications tab; security staff
  * reach the same tab via the navbar bell. Data comes from
- * GET /api/notifications via the useNotifications hook; clicking a card or
- * "Mark all as read" marks notifications read optimistically.
+ * GET /api/notifications via the useNotifications hook; clicking a card marks
+ * it read, the status circle toggles read ⇄ unread, and "Unread" filters the
+ * list. All updates are optimistic.
+ *
+ * The Unread filter is client-side, which is correct only while the full
+ * list is loaded in one request — move it server-side (?unreadOnly=true)
+ * when pagination lands.
  */
 
 import { Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
+import { useState } from 'react';
 import NotificationCard from '@/components/NotificationCard';
 import { useNotifications } from '@/hooks/useNotifications';
 
@@ -20,8 +26,15 @@ export default function NotificationFeed() {
     isLoading,
     error,
     markRead,
+    markUnread,
     markAllRead,
   } = useNotifications();
+
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+
+  const visibleNotifications = showUnreadOnly
+    ? notifications.filter((n) => !n.isRead)
+    : notifications;
 
   return (
     <Stack gap={4} w="full">
@@ -30,8 +43,17 @@ export default function NotificationFeed() {
       </Text>
 
       <HStack justify="flex-end" gap={4}>
-        <Text fontSize="md" fontWeight="medium" color="gray.600">
-          {unreadCount} unread
+        <Text
+          as="button"
+          fontSize="md"
+          fontWeight="medium"
+          color={showUnreadOnly ? 'blue.500' : 'gray.600'}
+          textDecoration={showUnreadOnly ? 'underline' : 'none'}
+          cursor="pointer"
+          aria-pressed={showUnreadOnly}
+          onClick={() => setShowUnreadOnly((prev) => !prev)}
+        >
+          Unread ({unreadCount})
         </Text>
         <Text
           as="button"
@@ -53,13 +75,15 @@ export default function NotificationFeed() {
         <Text fontSize="sm" color="fg.error" textAlign="center" py={10}>
           Could not load notifications. Please try again later.
         </Text>
-      ) : notifications.length === 0 ? (
+      ) : visibleNotifications.length === 0 ? (
         <Text fontSize="sm" color="gray.500" textAlign="center" py={10}>
-          You&apos;re all caught up — no notifications yet.
+          {showUnreadOnly
+            ? 'No unread notifications.'
+            : "You're all caught up — no notifications yet."}
         </Text>
       ) : (
         <Stack gap={4}>
-          {notifications.map((notification) => (
+          {visibleNotifications.map((notification) => (
             <NotificationCard
               key={notification.notificationId}
               title={notification.title}
@@ -67,6 +91,11 @@ export default function NotificationFeed() {
               isRead={notification.isRead}
               createdAt={notification.createdAt}
               onClick={() => markRead(notification.notificationId)}
+              onToggleRead={() =>
+                notification.isRead
+                  ? markUnread(notification.notificationId)
+                  : markRead(notification.notificationId)
+              }
             />
           ))}
         </Stack>

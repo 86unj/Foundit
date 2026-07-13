@@ -60,6 +60,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { signOut } from '@/utils/auth';
 import { fetchNotifications } from '@/lib/api/notifications';
+import { useNotificationsBadge } from '@/components/NotificationsProvider';
 import { NOTIFICATIONS_PATH, type UserRole } from '@/utils/routes';
 
 /**
@@ -209,9 +210,14 @@ export default function Navbar({
   const isAuthenticated = variant !== 'guest';
   const userMenuItems = isAuthenticated ? userMenuItemsByVariant[variant] : [];
 
-  // Unread badge for the bell. Refreshed on route change so marking
-  // notifications read is reflected once the user navigates.
-  const [unreadCount, setUnreadCount] = useState(0);
+  // Unread badge for the bell. When a NotificationsProvider is mounted the
+  // count is shared with the feed and updates live as cards are marked read;
+  // otherwise fall back to local state refreshed on route change.
+  const badge = useNotificationsBadge();
+  const badgeSetUnreadCount = badge?.setUnreadCount ?? null;
+  const [selfUnreadCount, setSelfUnreadCount] = useState(0);
+  const unreadCount = badge ? badge.unreadCount : selfUnreadCount;
+
   useEffect(() => {
     if (!isAuthenticated) {
       return;
@@ -220,8 +226,13 @@ export default function Navbar({
     let cancelled = false;
     fetchNotifications()
       .then((data) => {
-        if (!cancelled) {
-          setUnreadCount(data.unreadCount);
+        if (cancelled) {
+          return;
+        }
+        if (badgeSetUnreadCount) {
+          badgeSetUnreadCount(data.unreadCount);
+        } else {
+          setSelfUnreadCount(data.unreadCount);
         }
       })
       .catch(() => {
@@ -231,7 +242,7 @@ export default function Navbar({
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, currentPath]);
+  }, [isAuthenticated, currentPath, badgeSetUnreadCount]);
 
   return (
     <Box

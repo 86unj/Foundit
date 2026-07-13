@@ -44,6 +44,7 @@ function hookState(
     isLoading: false,
     error: null,
     markRead: vi.fn(),
+    markUnread: vi.fn(),
     markAllRead: vi.fn(),
     reload: vi.fn(),
     ...overrides,
@@ -62,7 +63,45 @@ describe('NotificationFeed', () => {
 
     expect(screen.getByText('New Claim Submitted')).toBeDefined();
     expect(screen.getByText('Match found')).toBeDefined();
-    expect(screen.getByText('1 unread')).toBeDefined();
+    expect(screen.getByText('Unread (1)')).toBeDefined();
+  });
+
+  it('filters to unread cards when the Unread button is toggled', () => {
+    useNotificationsMock.mockReturnValue(hookState());
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unread (1)' }));
+
+    expect(screen.getByText('New Claim Submitted')).toBeDefined();
+    expect(screen.queryByText('Match found')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unread (1)' }));
+    expect(screen.getByText('Match found')).toBeDefined();
+  });
+
+  it('shows the filtered empty state when everything is read', () => {
+    useNotificationsMock.mockReturnValue(
+      hookState({
+        notifications: notifications.map((n) => ({ ...n, isRead: true })),
+        unreadCount: 0,
+      })
+    );
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unread (0)' }));
+
+    expect(screen.getByText('No unread notifications.')).toBeDefined();
+  });
+
+  it("toggling a read card's circle calls markUnread", () => {
+    const state = hookState();
+    useNotificationsMock.mockReturnValue(state);
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }));
+
+    expect(state.markUnread).toHaveBeenCalledWith('n-2');
+    expect(state.markRead).not.toHaveBeenCalled();
   });
 
   it('marks a notification read when its card is clicked', async () => {

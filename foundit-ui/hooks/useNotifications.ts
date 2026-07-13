@@ -1,18 +1,23 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type SetStateAction } from 'react';
 import {
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationUnread,
 } from '@/lib/api/notifications';
+import { useNotificationsBadge } from '@/components/NotificationsProvider';
 import type { AppNotification } from '@/types/notifications';
 
 /**
- * Loads the signed-in user's notification feed and exposes mark-read actions.
+ * Loads the signed-in user's notification feed and exposes read/unread
+ * actions.
  *
- * Mark-read updates are optimistic: the UI flips immediately and rolls back
- * to the server state on failure (by refetching).
+ * Updates are optimistic: the UI flips immediately and rolls back to the
+ * server state on failure (by refetching). When a NotificationsProvider is
+ * mounted, unread-count changes are mirrored into it so the navbar bell
+ * updates live.
  */
 export function useNotifications() {
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -21,6 +26,17 @@ export function useNotifications() {
   const [error, setError] = useState<string | null>(null);
   // Bumping this key re-runs the fetch effect (initial load + reloads).
   const [loadKey, setLoadKey] = useState(0);
+
+  const badge = useNotificationsBadge();
+  const badgeSetUnreadCount = badge?.setUnreadCount ?? null;
+
+  const updateUnreadCount = useCallback(
+    (next: SetStateAction<number>) => {
+      setUnreadCount(next);
+      badgeSetUnreadCount?.(next);
+    },
+    [badgeSetUnreadCount]
+  );
 
   const reload = useCallback(() => setLoadKey((key) => key + 1), []);
 
@@ -34,7 +50,7 @@ export function useNotifications() {
           return;
         }
         setNotifications(data.notifications);
-        setUnreadCount(data.unreadCount);
+        updateUnreadCount(data.unreadCount);
         setError(null);
       } catch (err) {
         if (!cancelled) {
@@ -52,7 +68,7 @@ export function useNotifications() {
     return () => {
       cancelled = true;
     };
-  }, [loadKey]);
+  }, [loadKey, updateUnreadCount]);
 
   const markRead = useCallback(
     async (notificationId: string) => {
@@ -68,7 +84,7 @@ export function useNotifications() {
           n.notificationId === notificationId ? { ...n, isRead: true } : n
         )
       );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      updateUnreadCount((prev) => Math.max(0, prev - 1));
 
       try {
         await markNotificationRead(notificationId);
@@ -76,7 +92,32 @@ export function useNotifications() {
         reload();
       }
     },
-    [notifications, reload]
+    [notifications, reload, updateUnreadCount]
+  );
+
+  const markUnread = useCallback(
+    async (notificationId: string) => {
+      const target = notifications.find(
+        (n) => n.notificationId === notificationId
+      );
+      if (!target || !target.isRead) {
+        return;
+      }
+
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.notificationId === notificationId ? { ...n, isRead: false } : n
+        )
+      );
+      updateUnreadCount((prev) => prev + 1);
+
+      try {
+        await markNotificationUnread(notificationId);
+      } catch {
+        reload();
+      }
+    },
+    [notifications, reload, updateUnreadCount]
   );
 
   const markAllRead = useCallback(async () => {
@@ -85,14 +126,14 @@ export function useNotifications() {
     }
 
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    setUnreadCount(0);
+    updateUnreadCount(0);
 
     try {
       await markAllNotificationsRead();
     } catch {
       reload();
     }
-  }, [unreadCount, reload]);
+  }, [unreadCount, reload, updateUnreadCount]);
 
   return {
     notifications,
@@ -100,6 +141,7 @@ export function useNotifications() {
     isLoading,
     error,
     markRead,
+    markUnread,
     markAllRead,
     reload,
   };

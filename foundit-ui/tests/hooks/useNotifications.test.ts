@@ -4,6 +4,7 @@ import {
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  markNotificationUnread,
 } from '@/lib/api/notifications';
 import { useNotifications } from '@/hooks/useNotifications';
 import type { AppNotification } from '@/types/notifications';
@@ -12,10 +13,12 @@ vi.mock('@/lib/api/notifications', () => ({
   fetchNotifications: vi.fn(),
   markAllNotificationsRead: vi.fn(),
   markNotificationRead: vi.fn(),
+  markNotificationUnread: vi.fn(),
 }));
 
 const fetchNotificationsMock = vi.mocked(fetchNotifications);
 const markNotificationReadMock = vi.mocked(markNotificationRead);
+const markNotificationUnreadMock = vi.mocked(markNotificationUnread);
 const markAllNotificationsReadMock = vi.mocked(markAllNotificationsRead);
 
 const unread: AppNotification = {
@@ -112,6 +115,45 @@ describe('useNotifications', () => {
       result.current.notifications.find((n) => n.notificationId === 'n-1')
         ?.isRead
     ).toBe(false);
+  });
+
+  it('optimistically marks a read notification unread', async () => {
+    markNotificationUnreadMock.mockResolvedValue({ ...read, isRead: false });
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markUnread('n-2'));
+
+    expect(
+      result.current.notifications.find((n) => n.notificationId === 'n-2')
+        ?.isRead
+    ).toBe(false);
+    expect(result.current.unreadCount).toBe(2);
+    expect(markNotificationUnreadMock).toHaveBeenCalledWith('n-2');
+  });
+
+  it('skips the request for an already-unread notification', async () => {
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markUnread('n-1'));
+
+    expect(markNotificationUnreadMock).not.toHaveBeenCalled();
+  });
+
+  it('refetches to roll back when marking unread fails', async () => {
+    markNotificationUnreadMock.mockRejectedValue(new Error('offline'));
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markUnread('n-2'));
+
+    await waitFor(() =>
+      expect(fetchNotificationsMock).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() => expect(result.current.unreadCount).toBe(1));
   });
 
   it('marks everything read via markAllRead', async () => {

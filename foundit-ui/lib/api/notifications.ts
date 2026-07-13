@@ -34,6 +34,21 @@ export async function markNotificationRead(
   return res.json() as Promise<AppNotification>;
 }
 
+export async function markNotificationUnread(
+  notificationId: string
+): Promise<AppNotification> {
+  const res = await authFetch(
+    `${API_BASE}/api/notifications/${notificationId}/unread`,
+    { method: 'PATCH' }
+  );
+
+  if (!res.ok) {
+    throw new Error(await parseApiError(res));
+  }
+
+  return res.json() as Promise<AppNotification>;
+}
+
 export async function markAllNotificationsRead(): Promise<{
   updatedCount: number;
 }> {
