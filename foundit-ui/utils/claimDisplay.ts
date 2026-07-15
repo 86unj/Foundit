@@ -245,10 +245,53 @@ export interface ClaimCardStatus {
   color: string;
 }
 
+/** Student-facing claim statuses (mirrors ClaimStatusProgress labels). */
+export function getStudentClaimDisplayStatus(
+  claim: Pick<SecurityClaimListItem, 'status'>
+): ClaimDisplayStatus {
+  switch (claim.status) {
+    case 'submitted':
+      return {
+        label: 'Submitted',
+        colorPalette: 'gray',
+        strip: 'gray.400',
+        color: 'gray.600',
+      };
+    case 'under_review':
+      return {
+        label: 'Under Review',
+        colorPalette: 'blue',
+        strip: 'blue.500',
+        color: 'blue.700',
+      };
+    case 'approved':
+      return {
+        label: 'Match Found',
+        colorPalette: 'orange',
+        strip: 'orange.500',
+        color: 'orange.700',
+      };
+    case 'picked_up':
+      return {
+        label: 'Completed',
+        colorPalette: 'green',
+        strip: 'green.500',
+        color: 'green.700',
+      };
+    case 'rejected':
+      return {
+        label: 'Rejected',
+        colorPalette: 'red',
+        strip: 'red.500',
+        color: 'red.700',
+      };
+  }
+}
+
 export function getClaimCardStatus(
-  claim: Pick<SecurityClaimListItem, 'status' | 'itemId'>
+  claim: Pick<SecurityClaimListItem, 'status'>
 ): ClaimCardStatus {
-  const { label, strip, color } = getClaimDisplayStatus(claim);
+  const { label, strip, color } = getStudentClaimDisplayStatus(claim);
 
   return { label, strip, color };
 }

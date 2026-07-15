@@ -1,6 +1,6 @@
 'use client';
 
-import { Box, Flex, HStack, Stack, Text, VStack } from '@chakra-ui/react';
+import { Box, Flex, Stack, Text, VStack } from '@chakra-ui/react';
 import type { SecurityClaimListItem } from '@/types/claims';
 import {
   formatClaimDate,
@@ -16,19 +16,22 @@ interface ClaimCardProps {
 export function ClaimCard({ claim }: ClaimCardProps) {
   const { strip, label, color } = getClaimCardStatus(claim);
   const itemName = getClaimItemName(claim);
+  const category = claim.item?.category ?? claim.category;
 
   return (
     <Flex
       w="full"
-      bg="white"
+      bg="transparent"
       borderRadius="md"
-      boxShadow="sm"
       borderWidth="1px"
       borderColor="gray.200"
       overflow="hidden"
       align="stretch"
-      role="article"
-      aria-label={`Claim ${claim.claimId}: ${claim.category} | ${itemName}, ${label}`}
+      transition="border-color 0.15s ease, background-color 0.15s ease"
+      _hover={{
+        borderColor: 'gray.300',
+        bg: 'gray.50',
+      }}
     >
       <Box w="4px" bg={strip} flexShrink={0} />
 
@@ -39,17 +42,16 @@ export function ClaimCard({ claim }: ClaimCardProps) {
         py={3}
         justify="space-between"
         align={{ base: 'stretch', md: 'center' }}
+        gap={{ base: 2, md: 4 }}
       >
-        <HStack gap={3} align="center" minW={0} overflow="hidden">
-          <VStack align="start" gap={0}>
-            <Text fontWeight="semibold" fontSize="sm" color="gray.800">
-              {claim.category} | {itemName}
-            </Text>
-            <Text fontSize="xs" color="gray.500">
-              Claim: #{formatClaimId(claim.claimId)}
-            </Text>
-          </VStack>
-        </HStack>
+        <VStack align="start" gap={0.5} minW={0}>
+          <Text fontWeight="semibold" fontSize="sm" color="fg" lineClamp={1}>
+            {itemName}
+          </Text>
+          <Text fontSize="xs" color="fg.muted" lineClamp={1}>
+            {category} · Claim #{formatClaimId(claim.claimId)}
+          </Text>
+        </VStack>
 
         <VStack
           align="end"
@@ -60,8 +62,8 @@ export function ClaimCard({ claim }: ClaimCardProps) {
           <Text fontSize="sm" fontWeight="semibold" color={color}>
             {label}
           </Text>
-          <Text fontSize="xs" color="gray.400">
-            {formatClaimDate(claim.createdAt)}
+          <Text fontSize="xs" color="fg.muted">
+            {formatClaimDate(claim.updatedAt)}
           </Text>
         </VStack>
       </Stack>

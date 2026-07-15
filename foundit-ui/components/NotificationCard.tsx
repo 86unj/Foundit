@@ -43,8 +43,8 @@ export default function NotificationCard({
   };
 
   const statusCircle = isRead ? (
-    <Circle size="18px" borderWidth="1px" borderColor="gray.500">
-      <Checkmark checked size="md" variant="plain" />{' '}
+    <Circle size="18px" borderWidth="2px" borderColor="gray.500">
+      <Checkmark checked size="sm" variant="plain" color="gray.500" />
     </Circle>
   ) : (
     <Circle size="18px" borderWidth="2px" borderColor="black" bg="white" />

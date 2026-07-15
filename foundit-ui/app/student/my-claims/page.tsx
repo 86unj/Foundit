@@ -19,7 +19,11 @@ import { fetchAllClaims } from '@/lib/api/claims';
 import { ClaimDetailModal } from '@/components/StudentClaimDetailModal';
 import type { SecurityClaimListItem } from '@/types/claims';
 import { getAccessToken } from '@/utils/auth';
-import { matchesStudentClaimFilter } from '@/utils/claimDisplay';
+import {
+  getClaimCardStatus,
+  getClaimItemName,
+  matchesStudentClaimFilter,
+} from '@/utils/claimDisplay';
 import { PAGE_BACKGROUND_PROPS } from '@/constants/pageBackground';
 
 const Select = chakra('select');
@@ -36,6 +40,16 @@ export default function StudentMyClaimsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedClaim, setSelectedClaim] =
     useState<SecurityClaimListItem | null>(null);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
+
+  function openClaimDetail(claim: SecurityClaimListItem) {
+    setSelectedClaim(claim);
+    setIsDetailOpen(true);
+  }
+
+  function closeClaimDetail() {
+    setIsDetailOpen(false);
+  }
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -60,15 +74,16 @@ export default function StudentMyClaimsPage() {
 
   const filteredClaims = useMemo(
     () =>
-      claims.filter((claim) =>
-        matchesStudentClaimFilter(claim, statusFilter, searchQuery)
-      ),
+      claims
+        .filter((claim) =>
+          matchesStudentClaimFilter(claim, statusFilter, searchQuery)
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        ),
     [claims, statusFilter, searchQuery]
   );
-
-  const claimsSummary = loading
-    ? 'Loading your claims…'
-    : `${claims.length} claim${claims.length === 1 ? '' : 's'}`;
 
   return (
     <Box
@@ -131,79 +146,72 @@ export default function StudentMyClaimsPage() {
           p={{ base: 6, md: 10 }}
           boxShadow="sm"
         >
-          {isLoggedIn && !error && (
+          {isLoggedIn && !error && !loading && claims.length > 0 && (
             <Flex
-              justify="space-between"
+              justify="flex-end"
               align={{ base: 'stretch', md: 'center' }}
-              direction={{ base: 'column', md: 'row' }}
               gap={{ base: 4, md: 5 }}
               mb={{ base: 5, md: 6 }}
             >
-              <Text fontSize="sm" color="gray.500" fontWeight="medium">
-                {claimsSummary}
-              </Text>
-
-              {!loading && claims.length > 0 && (
-                <Flex
-                  gap={3}
-                  align={{ base: 'stretch', md: 'center' }}
-                  direction={{ base: 'column', sm: 'row' }}
-                  w={{ base: 'full', md: 'auto' }}
-                >
-                  <Box position="relative" flex={1} minW={{ md: '240px' }}>
-                    <Input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by item, category, or claim ID..."
-                      h={10}
-                      pl={10}
-                      bg="white"
-                      borderColor="gray.300"
-                      fontSize="sm"
-                      _focusVisible={{
-                        outline: 'none',
-                        boxShadow: '0 0 0 2px {colors.focusRing}',
-                      }}
-                    />
-                    <Box
-                      position="absolute"
-                      left={3}
-                      top="50%"
-                      transform="translateY(-50%)"
-                      color="gray.500"
-                      pointerEvents="none"
-                      aria-hidden
-                    >
-                      <IoSearch size={18} />
-                    </Box>
-                  </Box>
-
-                  <Select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    minW={{ sm: '180px' }}
+              <Flex
+                gap={3}
+                align={{ base: 'stretch', md: 'center' }}
+                direction={{ base: 'column', sm: 'row' }}
+                w={{ base: 'full', md: 'auto' }}
+              >
+                <Box position="relative" flex={1} minW={{ md: '240px' }}>
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by item, category, or claim ID..."
                     h={10}
-                    px={3}
-                    fontSize="sm"
+                    pl={10}
                     bg="white"
-                    borderWidth="1px"
                     borderColor="gray.300"
-                    borderRadius="md"
-                    color="gray.800"
+                    fontSize="sm"
                     _focusVisible={{
                       outline: 'none',
                       boxShadow: '0 0 0 2px {colors.focusRing}',
                     }}
+                  />
+                  <Box
+                    position="absolute"
+                    left={3}
+                    top="50%"
+                    transform="translateY(-50%)"
+                    color="gray.500"
+                    pointerEvents="none"
+                    aria-hidden
                   >
-                    <option value="active">Active claims</option>
-                    <option value="all">All statuses</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="pickup">Ready for pickup</option>
-                    <option value="complete">Complete</option>
-                    <option value="closed">Closed</option>
-                  </Select>
-                </Flex>
-              )}
+                    <IoSearch size={18} />
+                  </Box>
+                </Box>
+
+                <Select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  minW={{ sm: '180px' }}
+                  h={10}
+                  px={3}
+                  fontSize="sm"
+                  bg="white"
+                  borderWidth="1px"
+                  borderColor="gray.300"
+                  borderRadius="md"
+                  color="gray.800"
+                  _focusVisible={{
+                    outline: 'none',
+                    boxShadow: '0 0 0 2px {colors.focusRing}',
+                  }}
+                >
+                  <option value="active">Active claims</option>
+                  <option value="all">All statuses</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="pickup">Match found</option>
+                  <option value="complete">Completed</option>
+                  <option value="closed">Rejected</option>
+                </Select>
+              </Flex>
             </Flex>
           )}
 
@@ -252,37 +260,52 @@ export default function StudentMyClaimsPage() {
               )}
 
             {isLoggedIn && !loading && !error && filteredClaims.length > 0 && (
-              <Stack gap={4}>
-                {filteredClaims.map((claim) => (
-                  <Box
-                    key={claim.claimId}
-                    cursor="pointer"
-                    onClick={() => {
-                      setSelectedClaim(null);
-                      setTimeout(() => {
-                        setSelectedClaim(claim);
-                      }, 0);
-                    }}
-                  >
-                    <ClaimCard claim={claim} />
-                  </Box>
-                ))}
+              <Stack gap={3}>
+                {filteredClaims.map((claim) => {
+                  const { label } = getClaimCardStatus(claim);
+                  const itemName = getClaimItemName(claim);
+                  const category = claim.item?.category ?? claim.category;
+                  return (
+                    <Box
+                      key={claim.claimId}
+                      role="button"
+                      tabIndex={0}
+                      w="full"
+                      textAlign="left"
+                      cursor="pointer"
+                      borderRadius="md"
+                      aria-label={`${itemName}, ${category}, ${label}`}
+                      onClick={() => openClaimDetail(claim)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          openClaimDetail(claim);
+                        }
+                      }}
+                      _focusVisible={{
+                        outline: 'none',
+                        boxShadow: '0 0 0 2px {colors.focusRing}',
+                      }}
+                    >
+                      <ClaimCard claim={claim} />
+                    </Box>
+                  );
+                })}
               </Stack>
             )}
           </Box>
         </Box>
       </Stack>
 
-      {selectedClaim && (
-        <ClaimDetailModal
-          claim={selectedClaim}
-          isOpen={selectedClaim !== null}
-          onClose={() => setSelectedClaim(null)}
-          onCancelled={(claimId) => {
-            setClaims((prev) => prev.filter((c) => c.claimId !== claimId));
-          }}
-        />
-      )}
+      <ClaimDetailModal
+        claim={selectedClaim}
+        isOpen={isDetailOpen}
+        onClose={closeClaimDetail}
+        onCancelled={(claimId) => {
+          setClaims((prev) => prev.filter((c) => c.claimId !== claimId));
+          closeClaimDetail();
+        }}
+      />
     </Box>
   );
 }

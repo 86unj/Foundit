@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import {
   Box,
-  Button,
+  Grid,
   Heading,
   HStack,
-  RadioGroup,
+  Link,
   Stack,
   Text,
 } from '@chakra-ui/react';
@@ -14,6 +14,7 @@ import FormTextInput from '@/components/FormTextInput';
 import SelectInput from '@/components/SelectInput';
 import TextAreaInput from '@/components/TextAreaInput';
 import ImageUploadGallery from '@/components/ImageUploadGallery';
+import { Button } from '@/components/ui/Button';
 import { LuCircleAlert } from 'react-icons/lu';
 import { CATEGORIES } from '@/constants/categories';
 import { useClaimItemForm } from '@/hooks/useClaimItemForm';
@@ -24,18 +25,22 @@ import { getAccessToken } from '@/utils/auth';
 import { API_BASE, authFetch } from '@/lib/api/client';
 import { debugLog, debugWarn } from '@/utils/debug';
 import { FixedPageBackground } from '@/components/PageBackground';
+import { PROFILE_PATH } from '@/utils/routes';
 
 // ─── NOTES FOR THE TEAM ──────────────────────────────────────────────────────
-// Student claim form (Figma nodes 273-891 default / 725-1573 validation).
-// Lives under app/student/ so it inherits RoleShell (Navbar/Footer) from
-// app/student/layout.tsx and the middleware's student-role gate. The hero
-// background/overlay are position:fixed at zIndex 0: above RoleShell's gray.50
-// page background, below the sticky Navbar (zIndex 10) and Footer (zIndex 1).
+// Student claim form. Lives under app/student/ so it inherits RoleShell
+// (Navbar/Footer) from app/student/layout.tsx and the middleware's
+// student-role gate. The hero background/overlay are position:fixed at
+// zIndex 0: above RoleShell's gray.50 page background, below the sticky
+// Navbar (zIndex 10) and Footer (zIndex 1).
+//
+// Layout: Contact info (read-only identity), then Item details
+// (required + optional item fields).
 //
 // Wired to existing utils:
 //   • utils/auth.ts         → getAccessToken (upload + submit), getLoggedInUser
 //                             (read-only identity rows)
-//   • constants/categories.ts → CATEGORIES for the Item to Claim dropdown
+//   • constants/categories.ts → CATEGORIES for the Category dropdown
 //   • hooks/useClaimItemForm  → state, validation mirroring createClaimSchema,
 //                             POST /api/claims
 //
@@ -44,11 +49,9 @@ import { FixedPageBackground } from '@/components/PageBackground';
 //      only the userId UUID, so the real studentNumber is fetched from
 //      GET /api/users/me on mount (same pattern as useProfileForm). The UUID
 //      is never shown; the row reads "—" until the fetch resolves or when the
-//      account has no student number. The same response supplies `phone`,
-//      which decides whether the phone notification options are selectable.
-//   2. Item Name, Notification preferences and Additional Information are
-//      sent on submit (createClaimSchema: itemName, notificationPreference,
-//      additionalInfo).
+//      account has no student number.
+//   2. dateLost / locationLost are optional (createClaimSchema); empty values
+//      are omitted from the POST body.
 //   3. Proof-of-ownership images are uploaded to R2 at submit time (mirrors
 //      report-found's handleImageUpload loop) and sent as `images` on the
 //      claim payload, linked to the claim via ItemImage.claimId.
@@ -105,20 +108,35 @@ function ReadonlyRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <Heading
+      as="h2"
+      fontSize="xs"
+      fontWeight="semibold"
+      letterSpacing="0.08em"
+      textTransform="uppercase"
+      color="fg.muted"
+      pb={2}
+      mb={1}
+      borderBottomWidth="1px"
+      borderBottomColor="gray.200"
+    >
+      {title}
+    </Heading>
+  );
+}
+
 function ClaimForm({ displayName }: { displayName: string }) {
   const form = useClaimItemForm();
-  // Real session data (utils/auth.ts) — the identity rows and the student-only
-  // gate the backend enforces. No mock data on this form.
   const accessToken = useAccessToken();
   const user = useLoggedInUser();
   const isStudent = user?.role === 'student';
+  const canSubmit = Boolean(accessToken && isStudent);
 
-  // The login payload has no studentNumber or phone, so fetch both from the
-  // profile endpoint. userId stays internal — it is never rendered. `phone`
-  // gates the phone-based notification options: until the fetch resolves (or
-  // when the account has no number) they stay disabled with a hint.
+  // The login payload has no studentNumber, so fetch it from the profile
+  // endpoint. userId stays internal — it is never rendered.
   const [studentNumber, setStudentNumber] = useState<string | null>(null);
-  const [phone, setPhone] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
 
@@ -132,7 +150,6 @@ function ClaimForm({ displayName }: { displayName: string }) {
         if (!res.ok) return;
         const data = (await res.json()) as {
           studentNumber: number | null;
-          phone: string | null;
         };
         if (data.studentNumber === null) {
           debugLog(
@@ -144,7 +161,6 @@ function ClaimForm({ displayName }: { displayName: string }) {
         if (data.studentNumber !== null) {
           setStudentNumber(String(data.studentNumber));
         }
-        setPhone(data.phone);
       } catch (err) {
         // Rows keep their placeholders; authFetch already logged the call.
         debugWarn('claim-page', 'profile fetch failed', err);
@@ -160,30 +176,28 @@ function ClaimForm({ displayName }: { displayName: string }) {
   return (
     <Stack
       bg="white"
-      rounded="md"
-      shadow="md"
+      rounded="xl"
       maxW="985px"
       w="full"
       p={{ base: 6, md: 12 }}
       gap={6}
     >
-      {/* Figma spec: 30px bold (#0f172a). Chakra v3 size="lg" is only 18px,
-          so use 3xl (30px) — don't confuse with v2 sizes. */}
-      <Heading size="3xl" color="gray.900" mb={6}>
-        Claim Item
-      </Heading>
-
-      {/*
-        Read-only identity rows from the design — prefilled from the logged-in
-        user, not editable inputs. Student ID is the studentNumber from
-        GET /api/users/me, never the userId UUID (see notes at top of file).
-      */}
-      {/* gap={5} matches the form-field Stack below so the identity rows
-          share the same vertical rhythm. */}
       <Stack gap={5}>
+        <SectionHeader title="Contact info" />
+
         <ReadonlyRow label="Your Name" value={displayName || '—'} />
         <ReadonlyRow label="Student ID" value={studentNumber ?? '—'} />
-        <ReadonlyRow label="Email Address" value={user?.email || '—'} />
+        <Stack gap={1}>
+          <ReadonlyRow label="Email Address" value={user?.email || '—'} />
+          <Text fontSize="sm" color="fg.muted" pl={{ base: 0, sm: '196px' }}>
+            To receive claim status updates by email, turn on email
+            notifications in your{' '}
+            <Link href={PROFILE_PATH} color="blue.500">
+              profile settings
+            </Link>
+            .
+          </Text>
+        </Stack>
       </Stack>
 
       {!accessToken && (
@@ -199,103 +213,72 @@ function ClaimForm({ displayName }: { displayName: string }) {
       )}
 
       <Stack gap={5}>
-        {/* STUB — not persisted (no claim column; see notes at top of file).
-            Email is preselected (students are opted in by default); the
-            phone options unlock only when GET /api/users/me returned a phone
-            number, since User.phone is optional at signup. */}
-        {/* <HStack align="flex-start" gap={4}>
-          {/* minW (not fixed w) — the nowrap text is wider than the 180px
-              label column and would otherwise spill into the gap and sit
-              flush against the radios. */}
-        {/* <Text
-            minW="180px"
-            flexShrink={0}
-            fontSize="1rem"
-            fontWeight="semibold"
-            color="fg"
-            whiteSpace="nowrap"
-          >
-            Notification preferences
-          </Text> */}
-        {/* <Stack gap={2.5}>
-            <RadioGroup.Root
-              colorPalette="blue"
-              value={form.notificationPreference}
-              onValueChange={(e: { value: string | null }) => {
-                // Ark's details.value is a plain string; narrow it before it
-                // reaches the hook's NotificationPreference union.
-                if (
-                  e.value === 'email' ||
-                  e.value === 'phone' ||
-                  e.value === 'email_and_phone'
-                ) {
-                  form.setNotificationPreference(e.value);
-                }
-              }}
-            >
-              <HStack gap={6} flexWrap="wrap">
-                {[
-                  { value: 'email', label: 'Email', needsPhone: false },
-                  { value: 'phone', label: 'Phone', needsPhone: true },
-                  {
-                    value: 'email_and_phone',
-                    label: 'Email and phone',
-                    needsPhone: true,
-                  },
-                ].map((option) => (
-                  <RadioGroup.Item
-                    key={option.value}
-                    value={option.value}
-                    disabled={option.needsPhone && !phone}
-                  >
-                    <RadioGroup.ItemHiddenInput />
-                    <RadioGroup.ItemIndicator />
-                    <RadioGroup.ItemText fontSize="sm" color="fg.muted">
-                      {option.label}
-                    </RadioGroup.ItemText>
-                  </RadioGroup.Item>
-                ))}
-              </HStack>
-            </RadioGroup.Root>
-            {!phone && (
-              <Text fontSize="xs" color="fg.muted">
-                Add a phone number to your profile to receive phone
-                notifications.
-              </Text>
-            )}
-          </Stack>
-        </HStack> */}
+        <SectionHeader title="Item details" />
 
-        <SelectInput
-          id="category"
-          label="Item to Claim"
-          required
-          options={CATEGORIES}
-          placeholder="Select a category"
-          selectWidth="fit-content"
-          value={form.category}
-          error={form.errors.category}
-          onChange={(e) => {
-            form.setCategory(e.target.value);
-            form.clearError('category');
-          }}
-        />
+        <Grid
+          templateColumns={{ base: '1fr', md: 'minmax(160px, 0.35fr) 1fr' }}
+          gap={5}
+        >
+          <SelectInput
+            id="category"
+            label="Category"
+            required
+            stacked
+            options={CATEGORIES}
+            placeholder="Select a category"
+            value={form.category}
+            error={form.errors.category}
+            onChange={(e) => {
+              form.setCategory(e.target.value);
+              form.clearError('category');
+            }}
+          />
 
-        {/* STUB — validated but not persisted yet (no claim column; see
-            notes at top of file). maxLength matches Item.title (100). */}
-        <FormTextInput
-          id="itemName"
-          label="Item Name"
-          required
-          placeholder="e.g. Black Hydro Flask water bottle"
-          maxLength={100}
-          value={form.itemName}
-          error={form.errors.itemName}
-          onChange={(e) => {
-            form.setItemName(e.target.value);
-            form.clearError('itemName');
-          }}
-        />
+          <FormTextInput
+            id="itemName"
+            label="Item Name"
+            required
+            stacked
+            placeholder="e.g. Black Hydro Flask water bottle"
+            maxLength={100}
+            value={form.itemName}
+            error={form.errors.itemName}
+            onChange={(e) => {
+              form.setItemName(e.target.value);
+              form.clearError('itemName');
+            }}
+          />
+        </Grid>
+
+        <Grid templateColumns={{ base: '1fr', md: '1fr 1fr' }} gap={5}>
+          <FormTextInput
+            id="dateLost"
+            label="Date Lost"
+            stacked
+            type="date"
+            max={form.todayISO()}
+            value={form.dateLost}
+            error={form.errors.dateLost}
+            onChange={(e) => {
+              form.setDateLost(e.target.value);
+              form.clearError('dateLost');
+            }}
+          />
+
+          <FormTextInput
+            id="locationLost"
+            label="Location Lost"
+            stacked
+            placeholder="e.g., Library 2nd floor, near Tim Hortons"
+            maxLength={255}
+            value={form.locationLost}
+            error={form.errors.locationLost}
+            onChange={(e) => {
+              form.setLocationLost(e.target.value);
+              form.clearError('locationLost');
+            }}
+          />
+        </Grid>
 
         <TextAreaInput
           id="description"
@@ -312,23 +295,23 @@ function ClaimForm({ displayName }: { displayName: string }) {
           }}
         />
 
-        {/* STUB — not persisted (no claim column; see notes at top of file). */}
         <TextAreaInput
           id="additionalInformation"
           label="Additional Information"
           stacked
+          placeholder="Anything else that could help verify ownership (serial number, stickers, contents…)"
+          maxLength={2000}
           value={form.additionalInformation}
           onChange={(e) => form.setAdditionalInformation(e.target.value)}
         />
 
-        {/* Proof-of-ownership upload — optional, large drop-zone (design). */}
         {accessToken && (
           <Box>
             <HStack justify="space-between" mb={2}>
-              <Text fontSize="sm" color="#64748b">
+              <Text fontSize="sm" color="fg.muted">
                 Upload an image showing proof of ownership
               </Text>
-              <Text fontSize="1rem" color="blue.500">
+              <Text fontSize="sm" color="blue.500">
                 Optional
               </Text>
             </HStack>
@@ -340,10 +323,6 @@ function ClaimForm({ displayName }: { displayName: string }) {
         )}
       </Stack>
       <Stack>
-        <Text fontSize="sm" color="blue.500" textAlign="center">
-          Opt in to email notifications to receive claim status updates.
-        </Text>
-
         {form.submitError && (
           <HStack gap={2} color="red.600">
             <LuCircleAlert size={16} aria-hidden />
@@ -353,13 +332,10 @@ function ClaimForm({ displayName }: { displayName: string }) {
           </HStack>
         )}
 
-        {/* Figma spec: 42px-tall buttons with 16px text — Chakra size="lg"
-          (44px / 16px) is the closest step; default md is 40px / 14px. */}
         <HStack justify="center" gap={4} pt={2}>
           <Button
-            variant="outline"
+            variant="muted"
             size="lg"
-            borderColor="border.input"
             w="140px"
             onClick={form.handleCancel}
             disabled={form.isSubmitting}
@@ -367,9 +343,10 @@ function ClaimForm({ displayName }: { displayName: string }) {
             Cancel
           </Button>
           <Button
-            colorPalette="blue"
+            variant="primary"
             size="lg"
             w="140px"
+            disabled={!canSubmit || form.isSubmitting}
             loading={form.isSubmitting}
             loadingText="Submitting..."
             onClick={form.handleSubmit}
