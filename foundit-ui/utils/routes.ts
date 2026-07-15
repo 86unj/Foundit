@@ -16,5 +16,8 @@ export const ROLE_HOME: Record<UserRole, string> = {
 /** Confirmation screen shown after a student submits a claim. */
 export const CLAIM_SUBMITTED_PATH = '/student/claim-item/submitted';
 
+/** Profile settings (email notification opt-in lives here). */
+export const PROFILE_PATH = '/profile';
+
 /** Shared notification feed — the Notifications tab of the profile page. */
 export const NOTIFICATIONS_PATH = '/profile?tab=notifications';

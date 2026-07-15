@@ -48,13 +48,7 @@ import {
 } from '@chakra-ui/react';
 import { Button } from './ui/Button';
 import MdiIcon from '@mdi/react';
-import {
-  mdiAccountCircle,
-  mdiBellOutline,
-  mdiChevronDown,
-  mdiClose,
-  mdiMenu,
-} from '@mdi/js';
+import { mdiAccountCircle, mdiChevronDown, mdiClose, mdiMenu } from '@mdi/js';
 import NextLink from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -84,6 +78,10 @@ interface NavbarProps {
   activePath?: string;
 }
 
+function formatUnreadBadge(count: number): string {
+  return count > 9 ? '9+' : String(count);
+}
+
 // ── Dropdown ──────────────────────────────────────────────────────────────────
 
 type DropdownVariant = 'user';
@@ -93,29 +91,64 @@ export interface DropdownItem {
   href?: string;
   onClick?: () => void;
   danger?: boolean;
+  /** Optional unread count shown beside the item label. */
+  badge?: number;
 }
 
 type DropdownProps =
-  | { variant: 'user'; items: DropdownItem[]; userName: string }
+  | {
+      variant: 'user';
+      items: DropdownItem[];
+      userName: string;
+      unreadCount?: number;
+    }
   | {
       variant: Exclude<DropdownVariant, 'user'>;
       items: DropdownItem[];
       userName?: never;
+      unreadCount?: never;
     };
 
-export function Dropdown({ variant, items, userName }: DropdownProps) {
+export function Dropdown({
+  variant,
+  items,
+  userName,
+  unreadCount = 0,
+}: DropdownProps) {
   const router = useRouter();
 
   const trigger = (() => {
     switch (variant) {
       case 'user':
         return (
-          <ChakraButton variant="ghost" size="sm" px={0}>
+          <ChakraButton
+            variant="ghost"
+            size="sm"
+            px={0}
+            aria-label={
+              unreadCount > 0
+                ? `Account menu, ${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
+                : 'Account menu'
+            }
+          >
             <HStack gap={2}>
               <Text fontSize="md" fontWeight="medium" color="gray.900">
                 {userName}
               </Text>
-              <MdiIcon path={mdiAccountCircle} size={0.9} />
+              <Box position="relative" display="inline-flex">
+                <MdiIcon path={mdiAccountCircle} size={0.9} />
+                {unreadCount > 0 && (
+                  <Circle
+                    size="8px"
+                    bg="red.600"
+                    position="absolute"
+                    top="-1px"
+                    right="-2px"
+                    pointerEvents="none"
+                    aria-hidden
+                  />
+                )}
+              </Box>
               <MdiIcon path={mdiChevronDown} size={0.7} />
             </HStack>
           </ChakraButton>
@@ -131,7 +164,7 @@ export function Dropdown({ variant, items, userName }: DropdownProps) {
       <Menu.Trigger asChild>{trigger}</Menu.Trigger>
       <Menu.Positioner mt={4}>
         <Menu.Content minW="160px">
-          {items.map(({ label, href, onClick, danger }) => (
+          {items.map(({ label, href, onClick, danger, badge }) => (
             <Menu.Item
               key={label}
               value={label.toLowerCase()}
@@ -149,7 +182,21 @@ export function Dropdown({ variant, items, userName }: DropdownProps) {
                 }
               }}
             >
-              {label}
+              <HStack justify="space-between" w="full" gap={4}>
+                <Text as="span">{label}</Text>
+                {badge != null && badge > 0 && (
+                  <Circle
+                    size="18px"
+                    bg="red.600"
+                    color="white"
+                    fontSize="10px"
+                    fontWeight="bold"
+                    flexShrink={0}
+                  >
+                    {formatUnreadBadge(badge)}
+                  </Circle>
+                )}
+              </HStack>
             </Menu.Item>
           ))}
         </Menu.Content>
@@ -194,6 +241,17 @@ const userMenuItemsByVariant: Record<
   ],
 };
 
+function withNotificationBadge(
+  items: DropdownItem[],
+  unreadCount: number
+): DropdownItem[] {
+  return items.map((item) =>
+    item.label === 'Notifications' && unreadCount > 0
+      ? { ...item, badge: unreadCount }
+      : item
+  );
+}
+
 // ── Navbar ────────────────────────────────────────────────────────────────────
 
 export default function Navbar({
@@ -208,15 +266,18 @@ export default function Navbar({
 
   const navLinks = navLinksByVariant[variant];
   const isAuthenticated = variant !== 'guest';
-  const userMenuItems = isAuthenticated ? userMenuItemsByVariant[variant] : [];
 
-  // Unread badge for the bell. When a NotificationsProvider is mounted the
-  // count is shared with the feed and updates live as cards are marked read;
-  // otherwise fall back to local state refreshed on route change.
+  // Unread badge on the account menu. When a NotificationsProvider is mounted
+  // the count is shared with the feed and updates live as cards are marked
+  // read; otherwise fall back to local state refreshed on route change.
   const badge = useNotificationsBadge();
   const badgeSetUnreadCount = badge?.setUnreadCount ?? null;
   const [selfUnreadCount, setSelfUnreadCount] = useState(0);
   const unreadCount = badge ? badge.unreadCount : selfUnreadCount;
+
+  const userMenuItems = isAuthenticated
+    ? withNotificationBadge(userMenuItemsByVariant[variant], unreadCount)
+    : [];
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -301,57 +362,50 @@ export default function Navbar({
           )}
 
           {isAuthenticated && (
-            <Box position="relative">
-              <IconButton
-                aria-label="Notifications"
-                variant="ghost"
-                size="sm"
-                px={0}
-                minW="auto"
-                onClick={() => router.push(NOTIFICATIONS_PATH)}
-              >
-                <MdiIcon path={mdiBellOutline} size={0.9} />
-              </IconButton>
-              {unreadCount > 0 && (
-                <Circle
-                  size="16px"
-                  bg="blue.500"
-                  color="white"
-                  fontSize="10px"
-                  fontWeight="bold"
-                  position="absolute"
-                  top="-6px"
-                  right="-8px"
-                  pointerEvents="none"
-                >
-                  {unreadCount > 9 ? '9+' : unreadCount}
-                </Circle>
-              )}
-            </Box>
-          )}
-
-          {isAuthenticated && (
             <Dropdown
               variant="user"
               userName={userName}
               items={userMenuItems}
+              unreadCount={unreadCount}
             />
           )}
         </HStack>
 
         {/* Mobile: hamburger toggle (hidden on desktop) */}
-        <IconButton
-          aria-label={mobileOpen ? 'Close menu' : 'Open menu'}
-          variant="ghost"
-          display={{ base: 'flex', md: 'none' }}
-          onClick={() => setMobileOpen((prev) => !prev)}
-        >
-          {mobileOpen ? (
-            <MdiIcon path={mdiClose} size={0.9} />
-          ) : (
-            <MdiIcon path={mdiMenu} size={0.9} />
+        <Box position="relative" display={{ base: 'flex', md: 'none' }}>
+          <IconButton
+            aria-label={
+              mobileOpen
+                ? 'Close menu'
+                : unreadCount > 0
+                  ? `Open menu, ${unreadCount} unread notification${unreadCount === 1 ? '' : 's'}`
+                  : 'Open menu'
+            }
+            variant="ghost"
+            onClick={() => setMobileOpen((prev) => !prev)}
+          >
+            {mobileOpen ? (
+              <MdiIcon path={mdiClose} size={0.9} />
+            ) : (
+              <MdiIcon path={mdiMenu} size={0.9} />
+            )}
+          </IconButton>
+          {isAuthenticated && unreadCount > 0 && !mobileOpen && (
+            <Circle
+              size="16px"
+              bg="red.600"
+              color="white"
+              fontSize="10px"
+              fontWeight="bold"
+              position="absolute"
+              top="2px"
+              right="2px"
+              pointerEvents="none"
+            >
+              {formatUnreadBadge(unreadCount)}
+            </Circle>
           )}
-        </IconButton>
+        </Box>
       </Flex>
 
       {/* ── Mobile dropdown (expands below main row) ──────────────────────── */}
@@ -404,7 +458,7 @@ export default function Navbar({
           {isAuthenticated && (
             <>
               <Box h="1px" bg="gray.200" my={1} mx={4} />
-              {userMenuItems.map(({ label, href, onClick, danger }) =>
+              {userMenuItems.map(({ label, href, onClick, danger, badge }) =>
                 onClick ? (
                   <ChakraButton
                     key={label}
@@ -440,7 +494,23 @@ export default function Navbar({
                     _hover={{ bg: 'gray.100', textDecoration: 'none' }}
                     onClick={() => setMobileOpen(false)}
                   >
-                    <NextLink href={href!}>{label}</NextLink>
+                    <NextLink href={href!}>
+                      <HStack justify="space-between" w="full" gap={4}>
+                        <Text as="span">{label}</Text>
+                        {badge != null && badge > 0 && (
+                          <Circle
+                            size="18px"
+                            bg="red.600"
+                            color="white"
+                            fontSize="10px"
+                            fontWeight="bold"
+                            flexShrink={0}
+                          >
+                            {formatUnreadBadge(badge)}
+                          </Circle>
+                        )}
+                      </HStack>
+                    </NextLink>
                   </Link>
                 )
               )}

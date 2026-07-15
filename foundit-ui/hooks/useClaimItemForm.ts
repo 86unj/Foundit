@@ -7,11 +7,23 @@ import { CLAIM_SUBMITTED_PATH } from '@/utils/routes';
 import { getAccessToken } from '@/utils/auth';
 import handleImageUpload from '@/utils/handleImageUpload';
 import { debugError, debugLog, debugWarn } from '@/utils/debug';
+import { todayISO } from '@/utils/foundItemForm';
 
-// Backend caps (createClaimSchema): category ≤ 50, description ≤ 2000.
+// Backend caps (createClaimSchema): category ≤ 50, description ≤ 2000,
+// locationLost ≤ 255. dateLost / locationLost are optional on the API.
 const DESCRIPTION_MAX = 2000;
 // Matches Item.title (VarChar(100)) — createClaimSchema.itemName shares the cap.
 const ITEM_NAME_MAX = 100;
+const LOCATION_LOST_MAX = 255;
+
+// Stable order used when scrolling to the first invalid field.
+const FIELD_ORDER = [
+  'category',
+  'itemName',
+  'description',
+  'dateLost',
+  'locationLost',
+] as const;
 
 // What the student wants to be notified through when their claim advances.
 // Phone-based options are only selectable when the profile has a phone number.
@@ -22,11 +34,28 @@ function requiredMsg(label: string): string {
   return `${label} is a required field`;
 }
 
+function focusFirstError(errors: Record<string, string>) {
+  if (typeof document === 'undefined') return;
+
+  const firstField = FIELD_ORDER.find((field) => errors[field]);
+  if (!firstField) return;
+
+  const el = document.getElementById(firstField);
+  if (!el) return;
+
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (typeof el.focus === 'function') {
+    el.focus({ preventScroll: true });
+  }
+}
+
 export function useClaimItemForm() {
   const router = useRouter();
 
   const [category, setCategory] = useState('');
   const [itemName, setItemName] = useState('');
+  const [dateLost, setDateLost] = useState('');
+  const [locationLost, setLocationLost] = useState('');
   const [description, setDescription] = useState('');
   // Defaults to 'email' — students are opted in to email notifications unless
   // they pick otherwise.
@@ -52,8 +81,10 @@ export function useClaimItemForm() {
   }
 
   // Mirrors createClaimSchema so the client fails fast before the POST.
-  function validate(): boolean {
+  // dateLost / locationLost are optional; only validate when provided.
+  function validate(): Record<string, string> {
     const next: Record<string, string> = {};
+    const today = todayISO();
 
     if (!category.trim()) {
       next.category = requiredMsg('Category');
@@ -71,6 +102,14 @@ export function useClaimItemForm() {
       next.description = `Description must be ${DESCRIPTION_MAX} characters or fewer`;
     }
 
+    if (dateLost.trim() && dateLost > today) {
+      next.dateLost = 'Date Lost cannot be in the future';
+    }
+
+    if (locationLost.trim() && locationLost.trim().length > LOCATION_LOST_MAX) {
+      next.locationLost = `Location must be ${LOCATION_LOST_MAX} characters or fewer`;
+    }
+
     setErrors(next);
     const failedFields = Object.keys(next);
     if (failedFields.length > 0) {
@@ -78,7 +117,7 @@ export function useClaimItemForm() {
         fields: failedFields,
       });
     }
-    return failedFields.length === 0;
+    return next;
   }
 
   function messageForStatus(status: number): string {
@@ -102,7 +141,12 @@ export function useClaimItemForm() {
     if (isSubmitting) return;
 
     setSubmitError(null);
-    if (!validate()) return;
+    const nextErrors = validate();
+    if (Object.keys(nextErrors).length > 0) {
+      // Defer so the invalid styles paint before we scroll/focus.
+      queueMicrotask(() => focusFirstError(nextErrors));
+      return;
+    }
 
     const accessToken = getAccessToken();
     if (!accessToken) {
@@ -110,11 +154,15 @@ export function useClaimItemForm() {
       return;
     }
 
+    const trimmedLocation = locationLost.trim();
+
     // Log shapes, not content — description/additionalInformation are
     // user-typed (see utils/debug.ts conventions).
     debugLog('claim-form', 'submitting claim', {
       category,
       itemNameLength: itemName.trim().length,
+      hasDateLost: Boolean(dateLost.trim()),
+      locationLostLength: trimmedLocation.length,
       descriptionLength: description.trim().length,
       notificationPreference,
       additionalInformationLength: additionalInformation.trim().length,
@@ -143,6 +191,8 @@ export function useClaimItemForm() {
           category: category.trim(),
           itemName: itemName.trim(),
           description: description.trim(),
+          dateLost: dateLost.trim() || undefined,
+          locationLost: trimmedLocation || undefined,
           additionalInfo: additionalInformation.trim() || undefined,
           notificationPreference,
           images: uploadedImages,
@@ -182,6 +232,10 @@ export function useClaimItemForm() {
     setCategory,
     itemName,
     setItemName,
+    dateLost,
+    setDateLost,
+    locationLost,
+    setLocationLost,
     description,
     setDescription,
     notificationPreference,
@@ -194,6 +248,7 @@ export function useClaimItemForm() {
     clearError,
     isSubmitting,
     submitError,
+    todayISO,
     handleSubmit,
     handleCancel,
   };

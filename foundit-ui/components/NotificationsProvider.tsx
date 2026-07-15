@@ -1,8 +1,8 @@
 'use client';
 
 /**
- * Shares the unread-notification count between the navbar bell and the
- * notification feed, so marking cards read updates the badge instantly.
+ * Shares the unread-notification count between the navbar account badge and
+ * the notification feed, so marking cards read updates the badge instantly.
  *
  * Optional by design: components fall back to their own state when no
  * provider is mounted (guest pages, isolated tests).
