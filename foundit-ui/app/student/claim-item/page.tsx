@@ -169,7 +169,7 @@ function ClaimForm({ displayName }: { displayName: string }) {
     >
       {/* Figma spec: 30px bold (#0f172a). Chakra v3 size="lg" is only 18px,
           so use 3xl (30px) — don't confuse with v2 sizes. */}
-      <Heading size="3xl" color="gray.900">
+      <Heading size="3xl" color="gray.900" mb={6}>
         Claim Item
       </Heading>
 
@@ -203,11 +203,11 @@ function ClaimForm({ displayName }: { displayName: string }) {
             Email is preselected (students are opted in by default); the
             phone options unlock only when GET /api/users/me returned a phone
             number, since User.phone is optional at signup. */}
-        <HStack align="flex-start" gap={4}>
+        {/* <HStack align="flex-start" gap={4}>
           {/* minW (not fixed w) — the nowrap text is wider than the 180px
               label column and would otherwise spill into the gap and sit
               flush against the radios. */}
-          <Text
+        {/* <Text
             minW="180px"
             flexShrink={0}
             fontSize="1rem"
@@ -216,8 +216,8 @@ function ClaimForm({ displayName }: { displayName: string }) {
             whiteSpace="nowrap"
           >
             Notification preferences
-          </Text>
-          <Stack gap={2.5}>
+          </Text> */}
+        {/* <Stack gap={2.5}>
             <RadioGroup.Root
               colorPalette="blue"
               value={form.notificationPreference}
@@ -264,7 +264,7 @@ function ClaimForm({ displayName }: { displayName: string }) {
               </Text>
             )}
           </Stack>
-        </HStack>
+        </HStack> */}
 
         <SelectInput
           id="category"
@@ -339,46 +339,45 @@ function ClaimForm({ displayName }: { displayName: string }) {
           </Box>
         )}
       </Stack>
+      <Stack>
+        <Text fontSize="sm" color="blue.500" textAlign="center">
+          Opt in to email notifications to receive claim status updates.
+        </Text>
 
-      <Text fontSize="sm" color="#64748b">
-        You are subscribed to email notifications by default. Use the
-        notification preferences above to change how we contact you about this
-        claim.
-      </Text>
+        {form.submitError && (
+          <HStack gap={2} color="red.600">
+            <LuCircleAlert size={16} aria-hidden />
+            <Text fontSize="sm" fontWeight="medium">
+              {form.submitError}
+            </Text>
+          </HStack>
+        )}
 
-      {form.submitError && (
-        <HStack gap={2} color="red.600">
-          <LuCircleAlert size={16} aria-hidden />
-          <Text fontSize="sm" fontWeight="medium">
-            {form.submitError}
-          </Text>
-        </HStack>
-      )}
-
-      {/* Figma spec: 42px-tall buttons with 16px text — Chakra size="lg"
+        {/* Figma spec: 42px-tall buttons with 16px text — Chakra size="lg"
           (44px / 16px) is the closest step; default md is 40px / 14px. */}
-      <HStack justify="center" gap={4} pt={2}>
-        <Button
-          variant="outline"
-          size="lg"
-          borderColor="border.input"
-          w="140px"
-          onClick={form.handleCancel}
-          disabled={form.isSubmitting}
-        >
-          Cancel
-        </Button>
-        <Button
-          colorPalette="blue"
-          size="lg"
-          w="140px"
-          loading={form.isSubmitting}
-          loadingText="Submitting..."
-          onClick={form.handleSubmit}
-        >
-          Submit
-        </Button>
-      </HStack>
+        <HStack justify="center" gap={4} pt={2}>
+          <Button
+            variant="outline"
+            size="lg"
+            borderColor="border.input"
+            w="140px"
+            onClick={form.handleCancel}
+            disabled={form.isSubmitting}
+          >
+            Cancel
+          </Button>
+          <Button
+            colorPalette="blue"
+            size="lg"
+            w="140px"
+            loading={form.isSubmitting}
+            loadingText="Submitting..."
+            onClick={form.handleSubmit}
+          >
+            Submit
+          </Button>
+        </HStack>
+      </Stack>
     </Stack>
   );
 }

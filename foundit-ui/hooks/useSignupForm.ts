@@ -78,6 +78,7 @@ export function useSignUpForm() {
           password,
           firstName,
           lastName,
+          agreedToLegal: true,
         }),
       });
 
