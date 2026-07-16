@@ -27,28 +27,33 @@ beforeEach(() => {
   });
 });
 
-describe('Navbar notification bell', () => {
-  // The desktop nav is display-none below the md breakpoint and jsdom never
-  // matches media queries, so query by label instead of by visible role.
-  it('shows the bell with the unread badge for authenticated users', async () => {
+describe('Navbar notifications entry', () => {
+  it('shows the unread badge for authenticated users', async () => {
     renderWithProvider(<Navbar variant="security" userName="Rendell V" />);
 
-    expect(screen.getByLabelText('Notifications')).toBeDefined();
-    await waitFor(() => expect(screen.getByText('3')).toBeDefined());
+    const accountMenu = await screen.findByLabelText(
+      'Account menu, 3 unread notifications'
+    );
+
+    fireEvent.click(accountMenu);
+
+    expect(await screen.findByText('Notifications')).toBeDefined();
+    expect(screen.getAllByText('3').length).toBeGreaterThan(0);
   });
 
-  it('navigates to the notifications tab when the bell is clicked', async () => {
+  it('navigates to the notifications tab from the account menu', async () => {
     renderWithProvider(<Navbar variant="student" userName="Casey H" />);
 
-    fireEvent.click(screen.getByLabelText('Notifications'));
+    fireEvent.click(await screen.findByLabelText(/Account menu/));
+    fireEvent.click(await screen.findByText('Notifications'));
 
     expect(pushMock).toHaveBeenCalledWith(NOTIFICATIONS_PATH);
   });
 
-  it('hides the bell and skips the fetch for guests', () => {
+  it('hides the notifications entry and skips the fetch for guests', () => {
     renderWithProvider(<Navbar variant="guest" />);
 
-    expect(screen.queryByLabelText('Notifications')).toBeNull();
+    expect(screen.queryByText('Notifications')).toBeNull();
     expect(fetchNotificationsMock).not.toHaveBeenCalled();
   });
 });

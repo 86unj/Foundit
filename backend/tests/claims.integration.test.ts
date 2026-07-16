@@ -35,6 +35,9 @@ vi.mock('../src/db', () => ({
       findMany: vi.fn(),
       findUnique: vi.fn(),
     },
+    campus: {
+      findFirst: vi.fn(),
+    },
     auditLog: {
       create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
     },
@@ -318,6 +321,42 @@ describe('claims routes', () => {
           title: 'New Claim Submitted',
         }),
       ],
+    });
+  });
+
+  test('POST /api/claims falls back to first campus record when student has no campusId', async () => {
+    mocks.authUser = { user_id: 'student-1', role: UserRole.student };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+      ...activeStudent,
+      campusId: null,
+    });
+    vi.mocked(prisma.campus.findFirst).mockResolvedValueOnce({
+      campusId: 'campus-42',
+    });
+
+    const tx = createClaimTx([{ userId: 'security-1' }]);
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app)
+      .post('/api/claims')
+      .send({ category: 'Electronics', description: 'Lost my iPhone' });
+
+    expect(res.status).toBe(201);
+    expect(prisma.campus.findFirst).toHaveBeenCalledWith({
+      select: { campusId: true },
+      orderBy: { campusName: 'asc' },
+    });
+    expect(tx.user.findMany).toHaveBeenCalledWith({
+      where: {
+        role: { in: [UserRole.security, UserRole.admin] },
+        campusId: 'campus-42',
+        isActive: true,
+      },
+      select: { userId: true },
     });
   });
 
