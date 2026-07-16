@@ -282,7 +282,7 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
       data.firstName,
       data.lastName
     );
-    const securityEmails = [ 'rvelasco6@myseneca.ca'];
+    const securityEmails = ['rvelasco6@myseneca.ca'];
     const role = securityEmails.includes(data.email.toLowerCase())
       ? 'security'
       : 'student';
