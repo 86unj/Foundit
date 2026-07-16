@@ -621,6 +621,10 @@ router.post(
         return;
       }
 
+      // Temporary fallback: some student accounts currently have no campusId,
+      // but Claim.campusId is still required by the database schema. Use the
+      // first configured campus so claim submission can continue until campus
+      // selection is modeled explicitly on the claim form.
       const campusId =
         actor.campusId ??
         (
