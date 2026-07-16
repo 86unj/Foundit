@@ -38,6 +38,9 @@ vi.mock('../src/db', () => ({
     auditLog: {
       create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
     },
+    notification: {
+      update: vi.fn(),
+    },
     $transaction: vi.fn(),
   },
 }));
@@ -51,7 +54,12 @@ vi.mock('../src/lib/matching/suggestions', () => ({
   refreshClaimMatchSuggestions: vi.fn(),
 }));
 
+vi.mock('../src/lib/email', () => ({
+  sendNotificationEmail: vi.fn(),
+}));
+
 import { prisma } from '../src/db';
+import { sendNotificationEmail } from '../src/lib/email';
 
 function createTestApp() {
   const app = express();
@@ -263,6 +271,12 @@ describe('claims routes', () => {
       },
       notification: {
         createMany: vi.fn(),
+        create: vi.fn().mockResolvedValue({
+          notificationId: '550e8400-e29b-41d4-a716-446655440099',
+          type: 'claim_status_update',
+          title: 'Claim submitted',
+          message: 'Your claim #550E8400 has been submitted.',
+        }),
       },
     };
   }
@@ -371,5 +385,132 @@ describe('claims routes', () => {
 
     expect(res.status).toBe(201);
     expect(tx.notification.createMany).not.toHaveBeenCalled();
+  });
+
+  test('PATCH /api/claims/:claimId/status emails students when rejected', async () => {
+    mocks.authUser = { user_id: 'security-1', role: UserRole.security };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce(claimRow);
+
+    const rejectedClaim = {
+      ...claimRow,
+      status: ClaimStatus.rejected,
+      rejectionReason: 'Not enough ownership details.',
+    };
+    const notification = {
+      notificationId: '550e8400-e29b-41d4-a716-446655440090',
+      type: 'claim_status_update',
+      title: 'Claim status updated: rejected',
+      message:
+        'Your claim for "iPhone 15" is now rejected. Reason: Not enough ownership details.',
+    };
+
+    const tx = {
+      claim: {
+        update: vi.fn().mockResolvedValue(rejectedClaim),
+      },
+      notification: {
+        create: vi.fn().mockResolvedValue(notification),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({ logId: 'log-2' }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app)
+      .patch('/api/claims/550e8400-e29b-41d4-a716-446655440000/status')
+      .send({
+        status: 'rejected',
+        rejectionReason: 'Not enough ownership details.',
+      });
+
+    expect(res.status).toBe(200);
+    expect(sendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'student@myseneca.ca',
+        subject: notification.title,
+        text: expect.stringContaining(notification.message),
+      })
+    );
+    expect(prisma.notification.update).toHaveBeenCalledWith({
+      where: { notificationId: notification.notificationId },
+      data: expect.objectContaining({
+        emailSent: true,
+        emailDeliveryStatus: 'sent',
+      }),
+    });
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'claim_email_notification_sent',
+        entityType: 'notification',
+        entityId: notification.notificationId,
+      }),
+    });
+  });
+
+  test('PATCH /api/claims/:claimId/status emails students when picked up', async () => {
+    mocks.authUser = { user_id: 'security-1', role: UserRole.security };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce({
+      ...claimRow,
+      itemId: '550e8400-e29b-41d4-a716-446655440010',
+      status: ClaimStatus.approved,
+    });
+
+    const pickedUpClaim = {
+      ...claimRow,
+      itemId: '550e8400-e29b-41d4-a716-446655440010',
+      status: ClaimStatus.picked_up,
+      pickedUpAt: new Date('2026-07-02'),
+      verifiedBy: 'security-1',
+    };
+    const notification = {
+      notificationId: '550e8400-e29b-41d4-a716-446655440091',
+      type: 'claim_status_update',
+      title: 'Claim status updated: picked up',
+      message: 'Your claim for "iPhone 15" is now picked up.',
+    };
+
+    const tx = {
+      item: {
+        findUnique: vi.fn().mockResolvedValue({
+          itemId: '550e8400-e29b-41d4-a716-446655440010',
+          status: 'stored',
+        }),
+        update: vi.fn(),
+      },
+      claim: {
+        update: vi.fn().mockResolvedValue(pickedUpClaim),
+      },
+      notification: {
+        create: vi.fn().mockResolvedValue(notification),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({ logId: 'log-3' }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app)
+      .patch('/api/claims/550e8400-e29b-41d4-a716-446655440000/status')
+      .send({ status: 'picked_up' });
+
+    expect(res.status).toBe(200);
+    expect(sendNotificationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'student@myseneca.ca',
+        subject: notification.title,
+        text: expect.stringContaining(notification.message),
+      })
+    );
   });
 });
