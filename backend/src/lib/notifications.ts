@@ -11,17 +11,20 @@ export function shortClaimRef(claimId: string): string {
  */
 export function createClaimStatusUpdateInput(
   claim: { claimId: string; studentId: string; itemName: string | null },
-  statusText: string
+  statusText: string,
+  options: { reason?: string | null } = {}
 ) {
   const claimLabel = claim.itemName
     ? `Your claim for "${claim.itemName}"`
     : `Your claim ${shortClaimRef(claim.claimId)}`;
+  const reason = options.reason?.trim();
+  const reasonText = reason ? ` Reason: ${reason}` : '';
 
   return {
     recipientId: claim.studentId,
     type: NotificationType.claim_status_update,
     title: `Claim status updated: ${statusText}`,
-    message: `${claimLabel} is now ${statusText}.`,
+    message: `${claimLabel} is now ${statusText}.${reasonText}`,
     referenceType: 'claim',
     referenceId: claim.claimId,
   } as const;

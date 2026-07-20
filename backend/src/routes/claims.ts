@@ -16,6 +16,11 @@ import {
   fanOutToCampusSecurity,
   shortClaimRef,
 } from '../lib/notifications';
+import {
+  deliverStudentClaimEmail,
+  studentNotificationEmailSelect,
+  type StudentNotificationEmailRow,
+} from '../lib/claimEmailNotifications';
 import { scheduleClaimSearchIndexIngest } from '../lib/matching/ingest';
 import { refreshClaimMatchSuggestions } from '../lib/matching/suggestions';
 import { resolveImageUrl } from '../utils/imageUrl';
@@ -410,6 +415,17 @@ const validStatusTransitions: Record<ClaimStatus, ClaimStatus[]> = {
   [ClaimStatus.picked_up]: [],
 };
 
+function createClaimSubmittedNotificationInput(claim: ClaimDetailRow) {
+  return {
+    recipientId: claim.studentId,
+    type: NotificationType.claim_status_update,
+    title: 'Claim submitted',
+    message: `Your claim ${shortClaimRef(claim.claimId)} has been submitted.`,
+    referenceType: 'claim',
+    referenceId: claim.claimId,
+  } as const;
+}
+
 function createMatchFoundNotificationInput(claim: {
   claimId: string;
   studentId: string;
@@ -480,25 +496,30 @@ async function applyMatchConfirmation(
     select: claimDetailSelect,
   });
 
-  await tx.notification.create({
+  const matchNotification = await tx.notification.create({
     data: createMatchFoundNotificationInput(updatedClaim),
+    select: studentNotificationEmailSelect,
   });
 
-  await tx.notification.create({
+  const statusNotification = await tx.notification.create({
     data: createClaimStatusNotificationInput(
       updatedClaim,
       ClaimStatus.approved
     ),
+    select: studentNotificationEmailSelect,
   });
 
-  return updatedClaim;
+  return { claim: updatedClaim, matchNotification, statusNotification };
 }
 
 function createClaimStatusNotificationInput(
   claim: ClaimDetailRow,
   nextStatus: ClaimStatus
 ) {
-  return createClaimStatusUpdateInput(claim, nextStatus.replace('_', ' '));
+  return createClaimStatusUpdateInput(claim, nextStatus.replace('_', ' '), {
+    reason:
+      nextStatus === ClaimStatus.rejected ? claim.rejectionReason : undefined,
+  });
 }
 
 async function notifySecurityOfNewClaim(
@@ -600,18 +621,30 @@ router.post(
         return;
       }
 
-      if (!actor.campusId) {
+      // Temporary fallback: some student accounts currently have no campusId,
+      // but Claim.campusId is still required by the database schema. Use the
+      // first configured campus so claim submission can continue until campus
+      // selection is modeled explicitly on the claim form.
+      const campusId =
+        actor.campusId ??
+        (
+          await prisma.campus.findFirst({
+            select: { campusId: true },
+            orderBy: { campusName: 'asc' },
+          })
+        )?.campusId;
+
+      if (!campusId) {
         res.status(409).json({
           code: 'CLAIM_CAMPUS_REQUIRED',
           message: 'A campus must be assigned before a claim can be submitted.',
         });
         return;
       }
-      const campusId = actor.campusId;
 
       const payload = req.body as CreateClaimInput;
 
-      const claim = await prisma.$transaction(async (tx) => {
+      const { claim, notification } = await prisma.$transaction(async (tx) => {
         const created = await tx.claim.create({
           data: {
             studentId: actor.userId,
@@ -646,10 +679,17 @@ router.post(
           campusId,
         });
 
-        return tx.claim.findUniqueOrThrow({
+        const nextClaim = await tx.claim.findUniqueOrThrow({
           where: { claimId: created.claimId },
           select: claimDetailSelect,
         });
+
+        const studentNotification = await tx.notification.create({
+          data: createClaimSubmittedNotificationInput(nextClaim),
+          select: studentNotificationEmailSelect,
+        });
+
+        return { claim: nextClaim, notification: studentNotification };
       });
 
       await writeAuditLog({
@@ -663,6 +703,12 @@ router.post(
           status: claim.status,
         },
         ipAddress: req.ip,
+      });
+
+      await deliverStudentClaimEmail(notification, claim, {
+        actorId: actor.userId,
+        ipAddress: req.ip,
+        event: 'claim_created',
       });
 
       scheduleClaimSearchIndexIngest(claim.claimId, {
@@ -1045,14 +1091,13 @@ router.patch(
         return;
       }
 
-      const updated = await prisma.$transaction(async (tx) => {
-        await applyMatchConfirmation(tx, claim, item.itemId, actor.userId);
-
-        return tx.claim.findUniqueOrThrow({
-          where: { claimId: claim.claimId },
-          select: claimDetailSelect,
-        });
-      });
+      const {
+        claim: updated,
+        matchNotification,
+        statusNotification,
+      } = await prisma.$transaction(async (tx) =>
+        applyMatchConfirmation(tx, claim, item.itemId, actor.userId)
+      );
 
       await writeAuditLog({
         actorId: actor.userId,
@@ -1065,6 +1110,19 @@ router.patch(
         },
         ipAddress: req.ip,
       });
+
+      await Promise.all([
+        deliverStudentClaimEmail(matchNotification, updated, {
+          actorId: actor.userId,
+          ipAddress: req.ip,
+          event: 'match_confirmed',
+        }),
+        deliverStudentClaimEmail(statusNotification, updated, {
+          actorId: actor.userId,
+          ipAddress: req.ip,
+          event: 'claim_status_approved',
+        }),
+      ]);
 
       res.status(200).json(await toClaimDetailDto(updated));
     } catch (err) {
@@ -1177,69 +1235,72 @@ router.patch(
         return;
       }
 
-      const updated = await prisma.$transaction(async (tx) => {
-        if (status === ClaimStatus.approved && claim.itemId) {
-          await reserveItemForClaim(tx, claim.itemId);
-        }
+      const { claim: updated, notification } = await prisma.$transaction(
+        async (tx) => {
+          if (status === ClaimStatus.approved && claim.itemId) {
+            await reserveItemForClaim(tx, claim.itemId);
+          }
 
-        if (status === ClaimStatus.picked_up && claim.itemId) {
-          const item = await tx.item.findUnique({
-            where: { itemId: claim.itemId },
-            select: { itemId: true, status: true },
+          if (status === ClaimStatus.picked_up && claim.itemId) {
+            const item = await tx.item.findUnique({
+              where: { itemId: claim.itemId },
+              select: { itemId: true, status: true },
+            });
+
+            if (!item) {
+              throw new Error('LINKED_ITEM_NOT_FOUND');
+            }
+
+            if (item.status === ItemStatus.stored) {
+              await tx.item.update({
+                where: { itemId: item.itemId },
+                data: { status: ItemStatus.claimed },
+              });
+            }
+          }
+
+          const nextClaim = await tx.claim.update({
+            where: { claimId: claim.claimId },
+            data: {
+              status,
+              rejectionReason:
+                status === ClaimStatus.rejected ? rejectionReason : null,
+              reviewedBy: actor.userId,
+              reviewedAt: new Date(),
+              ...(status === ClaimStatus.picked_up
+                ? {
+                    pickedUpAt: new Date(),
+                    verifiedBy: actor.userId,
+                  }
+                : {}),
+            },
+            select: claimDetailSelect,
           });
 
-          if (!item) {
-            throw new Error('LINKED_ITEM_NOT_FOUND');
-          }
+          const notification = await tx.notification.create({
+            data: createClaimStatusNotificationInput(nextClaim, status),
+            select: studentNotificationEmailSelect,
+          });
 
-          if (item.status === ItemStatus.stored) {
-            await tx.item.update({
-              where: { itemId: item.itemId },
-              data: { status: ItemStatus.claimed },
-            });
-          }
-        }
-
-        const nextClaim = await tx.claim.update({
-          where: { claimId: claim.claimId },
-          data: {
-            status,
-            rejectionReason:
-              status === ClaimStatus.rejected ? rejectionReason : null,
-            reviewedBy: actor.userId,
-            reviewedAt: new Date(),
-            ...(status === ClaimStatus.picked_up
-              ? {
-                  pickedUpAt: new Date(),
-                  verifiedBy: actor.userId,
-                }
-              : {}),
-          },
-          select: claimDetailSelect,
-        });
-
-        const notification = await tx.notification.create({
-          data: createClaimStatusNotificationInput(nextClaim, status),
-        });
-
-        await writeAuditLog(
-          {
-            actorId: actor.userId,
-            action: 'claim_notification_sent',
-            entityType: 'notification',
-            entityId: notification.notificationId,
-            details: {
-              claimId: nextClaim.claimId,
-              recipientId: nextClaim.studentId,
-              claimStatus: status,
+          await writeAuditLog(
+            {
+              actorId: actor.userId,
+              action: 'claim_notification_sent',
+              entityType: 'notification',
+              entityId: notification.notificationId,
+              details: {
+                claimId: nextClaim.claimId,
+                recipientId: nextClaim.studentId,
+                claimStatus: status,
+              },
+              ipAddress: req.ip,
             },
-            ipAddress: req.ip,
-          },
-          tx
-        );
+            tx
+          );
 
-        return nextClaim;
-      });
+          return { claim: nextClaim, notification };
+        }
+      );
 
       await writeAuditLog({
         actorId: actor.userId,
@@ -1252,6 +1313,12 @@ router.patch(
           rejectionReason: rejectionReason ?? null,
         },
         ipAddress: req.ip,
+      });
+
+      await deliverStudentClaimEmail(notification, updated, {
+        actorId: actor.userId,
+        ipAddress: req.ip,
+        event: `claim_status_${status}`,
       });
 
       res.status(200).json(await toClaimDetailDto(updated));
@@ -1521,54 +1588,67 @@ router.patch(
 
       const { status } = req.body as { status: MatchStatus };
 
-      const updated = await prisma.$transaction(async (tx) => {
-        if (status === MatchStatus.confirmed) {
-          const item = await tx.item.findUnique({
-            where: { itemId: match.itemId },
-            select: { itemId: true, status: true },
+      const { updated, confirmedMatchEmail } = await prisma.$transaction(
+        async (tx) => {
+          let matchEmail: {
+            claim: ClaimDetailRow;
+            matchNotification: StudentNotificationEmailRow;
+            statusNotification: StudentNotificationEmailRow;
+          } | null = null;
+
+          if (status === MatchStatus.confirmed) {
+            const item = await tx.item.findUnique({
+              where: { itemId: match.itemId },
+              select: { itemId: true, status: true },
+            });
+
+            if (!item) {
+              throw new Error('MATCH_ITEM_NOT_FOUND');
+            }
+
+            if (item.status !== ItemStatus.stored) {
+              const conflictError = new Error('MATCH_ITEM_NOT_STORED');
+              conflictError.name = 'MATCH_ITEM_NOT_STORED';
+              throw conflictError;
+            }
+
+            matchEmail = await applyMatchConfirmation(
+              tx,
+              { claimId: match.claimId, studentId: claim.studentId },
+              match.itemId,
+              actor.userId
+            );
+          }
+
+          await tx.matchSuggestion.updateMany({
+            where: {
+              claimId: match.claimId,
+              matchId: { not: match.matchId },
+              status: MatchStatus.confirmed,
+            },
+            data: {
+              status: MatchStatus.dismissed,
+              reviewedBy: actor.userId,
+              reviewedAt: new Date(),
+            },
           });
 
-          if (!item) {
-            throw new Error('MATCH_ITEM_NOT_FOUND');
-          }
+          const updatedSuggestion = await tx.matchSuggestion.update({
+            where: { matchId: match.matchId },
+            data: {
+              status,
+              reviewedBy: actor.userId,
+              reviewedAt: new Date(),
+            },
+            select: matchSuggestionSelect,
+          });
 
-          if (item.status !== ItemStatus.stored) {
-            const conflictError = new Error('MATCH_ITEM_NOT_STORED');
-            conflictError.name = 'MATCH_ITEM_NOT_STORED';
-            throw conflictError;
-          }
-
-          await applyMatchConfirmation(
-            tx,
-            { claimId: match.claimId, studentId: claim.studentId },
-            match.itemId,
-            actor.userId
-          );
+          return {
+            updated: updatedSuggestion,
+            confirmedMatchEmail: matchEmail,
+          };
         }
-
-        await tx.matchSuggestion.updateMany({
-          where: {
-            claimId: match.claimId,
-            matchId: { not: match.matchId },
-            status: MatchStatus.confirmed,
-          },
-          data: {
-            status: MatchStatus.dismissed,
-            reviewedBy: actor.userId,
-            reviewedAt: new Date(),
-          },
-        });
-
-        return tx.matchSuggestion.update({
-          where: { matchId: match.matchId },
-          data: {
-            status,
-            reviewedBy: actor.userId,
-            reviewedAt: new Date(),
-          },
-          select: matchSuggestionSelect,
-        });
-      });
+      );
 
       await writeAuditLog({
         actorId: actor.userId,
@@ -1582,6 +1662,29 @@ router.patch(
         },
         ipAddress: req.ip,
       });
+
+      if (confirmedMatchEmail) {
+        await Promise.all([
+          deliverStudentClaimEmail(
+            confirmedMatchEmail.matchNotification,
+            confirmedMatchEmail.claim,
+            {
+              actorId: actor.userId,
+              ipAddress: req.ip,
+              event: 'match_confirmed',
+            }
+          ),
+          deliverStudentClaimEmail(
+            confirmedMatchEmail.statusNotification,
+            confirmedMatchEmail.claim,
+            {
+              actorId: actor.userId,
+              ipAddress: req.ip,
+              event: 'claim_status_approved',
+            }
+          ),
+        ]);
+      }
 
       res.status(200).json(toMatchSuggestionDto(updated));
     } catch (err) {

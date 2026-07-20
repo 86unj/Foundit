@@ -12,6 +12,10 @@ function requireEnv(name: 'SMTP_USER' | 'SMTP_PASS' | 'APP_URL'): string {
   return value;
 }
 
+function senderAddress(): string {
+  return `"Foundit" <${requireEnv('SMTP_USER')}>`;
+}
+
 export const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST ?? 'smtp.ethereal.email',
   port: parseInt(process.env.SMTP_PORT ?? '587'),
@@ -23,12 +27,17 @@ export const transporter = nodemailer.createTransport({
 
 export async function sendVerificationEmail(
   to: string,
-  token: string
+  token: string,
+  enabled = true
 ): Promise<void> {
+  if (!enabled) {
+    return;
+  }
+
   const verifyUrl = `${requireEnv('APP_URL')}/api/auth/verify-email?token=${token}`;
 
   await transporter.sendMail({
-    from: `"Foundit" <${process.env.SMTP_USER}>`,
+    from: senderAddress(),
     to,
     subject: 'Verify your Foundit account',
     html: `
@@ -36,5 +45,20 @@ export async function sendVerificationEmail(
       <p>Click the link below to verify your email. This link expires in 24 hours.</p>
       <a href="${verifyUrl}">${verifyUrl}</a>
     `,
+  });
+}
+
+export async function sendNotificationEmail(input: {
+  to: string;
+  subject: string;
+  html: string;
+  text: string;
+}): Promise<void> {
+  await transporter.sendMail({
+    from: senderAddress(),
+    to: input.to,
+    subject: input.subject,
+    html: input.html,
+    text: input.text,
   });
 }
