@@ -22,7 +22,6 @@ const userProfileSelect = {
   firstName: true,
   lastName: true,
   campusId: true,
-  phone: true,
   studentNumber: true,
   employeeId: true,
   emailNotificationOptIn: true,
@@ -45,7 +44,6 @@ function toUserProfileDto(user: UserProfileRow) {
     lastName: user.lastName,
     campusId: user.campusId,
     campusName: user.campus?.campusName ?? null,
-    phone: user.phone,
     studentNumber:
       user.studentNumber !== null ? Number(user.studentNumber) : null,
     employeeId: user.employeeId,
@@ -121,9 +119,6 @@ async function loadActiveUserProfile(
  *                   type: string
  *                   format: uuid
  *                   nullable: true
- *                 phone:
- *                   type: string
- *                   nullable: true
  *                 studentNumber:
  *                   type: integer
  *                   nullable: true
@@ -165,7 +160,7 @@ router.get('/me', authenticate, async (req, res, next) => {
  * /api/users/me:
  *   put:
  *     summary: Replace the authenticated user's editable profile fields
- *     description: Updates `firstName`, `lastName`, and `phone` only. Send `phone` as `null` to clear it.
+ *     description: Updates `firstName` and `lastName`. Students may also set `studentNumber` (9-digit Seneca ID) or send `null` to clear it.
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -175,16 +170,18 @@ router.get('/me', authenticate, async (req, res, next) => {
  *         application/json:
  *           schema:
  *             type: object
- *             required: [firstName, lastName, phone]
+ *             required: [firstName, lastName]
  *             properties:
  *               firstName:
  *                 type: string
  *               lastName:
  *                 type: string
- *               phone:
- *                 type: string
+ *               studentNumber:
+ *                 type: integer
  *                 nullable: true
- *                 example: '4161234567'
+ *                 minimum: 100000000
+ *                 maximum: 999999999
+ *                 description: Seneca student number (students only)
  *     responses:
  *       '200':
  *         description: Updated user profile
@@ -196,6 +193,8 @@ router.get('/me', authenticate, async (req, res, next) => {
  *         description: Account has been deactivated
  *       '404':
  *         description: User no longer exists
+ *       '409':
+ *         description: Student number already in use
  */
 router.put(
   '/me',
@@ -209,18 +208,47 @@ router.put(
         return;
       }
 
-      const { firstName, lastName, phone } = req.body as z.infer<
+      const { firstName, lastName, studentNumber } = req.body as z.infer<
         typeof replaceProfileSchema
       >;
 
-      const updated = await prisma.user.update({
-        where: { userId },
-        data: { firstName, lastName, phone },
-        select: {
-          ...userProfileSelect,
-          campus: { select: { campusName: true } },
-        },
-      });
+      const isStudent = existing.role === 'student';
+      const data: {
+        firstName: string;
+        lastName: string;
+        studentNumber?: bigint | null;
+      } = { firstName, lastName };
+
+      if (isStudent && studentNumber !== undefined) {
+        data.studentNumber =
+          studentNumber === null ? null : BigInt(studentNumber);
+      }
+
+      let updated;
+      try {
+        updated = await prisma.user.update({
+          where: { userId },
+          data,
+          select: {
+            ...userProfileSelect,
+            campus: { select: { campusName: true } },
+          },
+        });
+      } catch (err: unknown) {
+        if (
+          typeof err === 'object' &&
+          err !== null &&
+          'code' in err &&
+          (err as { code: string }).code === 'P2002'
+        ) {
+          res.status(409).json({
+            code: 'STUDENT_NUMBER_TAKEN',
+            message: 'That student ID is already linked to another account.',
+          });
+          return;
+        }
+        throw err;
+      }
 
       await writeAuditLog({
         actorId: userId,
@@ -231,9 +259,18 @@ router.put(
           previous: {
             firstName: existing.firstName,
             lastName: existing.lastName,
-            phone: existing.phone,
+            studentNumber:
+              existing.studentNumber !== null
+                ? Number(existing.studentNumber)
+                : null,
           },
-          updated: { firstName, lastName, phone },
+          updated: {
+            firstName,
+            lastName,
+            ...(isStudent && studentNumber !== undefined
+              ? { studentNumber }
+              : {}),
+          },
         },
         ipAddress: req.ip,
       });

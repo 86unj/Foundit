@@ -28,6 +28,19 @@ const apiFetchMock = vi.mocked(apiFetch);
 const getAccessTokenMock = vi.mocked(getAccessToken);
 const handleImageUploadMock = vi.mocked(handleImageUpload);
 
+function fillRequiredFields(
+  result: { current: ReturnType<typeof useClaimItemForm> },
+  overrides: {
+    category?: string;
+    itemName?: string;
+    description?: string;
+  } = {}
+) {
+  result.current.setCategory(overrides.category ?? 'Electronics');
+  result.current.setItemName(overrides.itemName ?? 'MacBook Pro');
+  result.current.setDescription(overrides.description ?? 'Black backpack');
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   getAccessTokenMock.mockReturnValue('test-access-token');
@@ -46,6 +59,8 @@ describe('useClaimItemForm', () => {
     expect(result.current.errors.description).toBe(
       'Description is a required field'
     );
+    expect(result.current.errors.dateLost).toBeUndefined();
+    expect(result.current.errors.locationLost).toBeUndefined();
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
@@ -53,14 +68,27 @@ describe('useClaimItemForm', () => {
     const { result } = renderHook(() => useClaimItemForm());
 
     act(() => {
-      result.current.setCategory('Electronics');
-      result.current.setItemName('x'.repeat(101));
-      result.current.setDescription('Black backpack');
+      fillRequiredFields(result, { itemName: 'x'.repeat(101) });
     });
     await act(() => result.current.handleSubmit());
 
     expect(result.current.errors.itemName).toBe(
       'Item Name must be 100 characters or fewer'
+    );
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects a future date lost when provided', async () => {
+    const { result } = renderHook(() => useClaimItemForm());
+
+    act(() => {
+      fillRequiredFields(result);
+      result.current.setDateLost('2999-01-01');
+    });
+    await act(() => result.current.handleSubmit());
+
+    expect(result.current.errors.dateLost).toBe(
+      'Date Lost cannot be in the future'
     );
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
@@ -71,14 +99,15 @@ describe('useClaimItemForm', () => {
     expect(result.current.notificationPreference).toBe('email');
   });
 
-  it('submits trimmed values and navigates to the confirmation screen', async () => {
+  it('submits required fields without date/location and navigates', async () => {
     apiFetchMock.mockResolvedValueOnce({ claimId: 'claim-1' });
     const { result } = renderHook(() => useClaimItemForm());
 
     act(() => {
-      result.current.setCategory('  Electronics  ');
-      result.current.setItemName('MacBook Pro');
-      result.current.setDescription('  Black backpack  ');
+      fillRequiredFields(result, {
+        category: '  Electronics  ',
+        description: '  Black backpack  ',
+      });
     });
     await act(() => result.current.handleSubmit());
 
@@ -97,6 +126,31 @@ describe('useClaimItemForm', () => {
     expect(result.current.isSubmitting).toBe(true);
   });
 
+  it('includes dateLost and locationLost when provided', async () => {
+    apiFetchMock.mockResolvedValueOnce({ claimId: 'claim-1' });
+    const { result } = renderHook(() => useClaimItemForm());
+
+    act(() => {
+      fillRequiredFields(result);
+      result.current.setDateLost('2026-07-01');
+      result.current.setLocationLost('  Library 2nd floor  ');
+    });
+    await act(() => result.current.handleSubmit());
+
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/claims', {
+      method: 'POST',
+      body: JSON.stringify({
+        category: 'Electronics',
+        itemName: 'MacBook Pro',
+        description: 'Black backpack',
+        dateLost: '2026-07-01',
+        locationLost: 'Library 2nd floor',
+        notificationPreference: 'email',
+        images: [],
+      }),
+    });
+  });
+
   it('uploads staged images to R2 and includes them in the claim payload', async () => {
     handleImageUploadMock.mockResolvedValueOnce({
       imageUrl: 'reports/abc.jpg',
@@ -108,9 +162,7 @@ describe('useClaimItemForm', () => {
     const file = new File(['x'], 'proof.jpg', { type: 'image/jpeg' });
 
     act(() => {
-      result.current.setCategory('Electronics');
-      result.current.setItemName('MacBook Pro');
-      result.current.setDescription('Black backpack');
+      fillRequiredFields(result);
       result.current.setImageFiles([file]);
     });
     await act(() => result.current.handleSubmit());
@@ -139,9 +191,7 @@ describe('useClaimItemForm', () => {
     const file = new File(['x'], 'proof.jpg', { type: 'image/jpeg' });
 
     act(() => {
-      result.current.setCategory('Electronics');
-      result.current.setItemName('MacBook Pro');
-      result.current.setDescription('Black backpack');
+      fillRequiredFields(result);
       result.current.setImageFiles([file]);
     });
     await act(() => result.current.handleSubmit());
@@ -158,9 +208,7 @@ describe('useClaimItemForm', () => {
     const { result } = renderHook(() => useClaimItemForm());
 
     act(() => {
-      result.current.setCategory('Electronics');
-      result.current.setItemName('MacBook Pro');
-      result.current.setDescription('Black backpack');
+      fillRequiredFields(result);
     });
     await act(() => result.current.handleSubmit());
 
@@ -178,9 +226,7 @@ describe('useClaimItemForm', () => {
     const { result } = renderHook(() => useClaimItemForm());
 
     act(() => {
-      result.current.setCategory('Electronics');
-      result.current.setItemName('MacBook Pro');
-      result.current.setDescription('Black backpack');
+      fillRequiredFields(result);
     });
     await act(() => result.current.handleSubmit());
 
@@ -195,9 +241,7 @@ describe('useClaimItemForm', () => {
     const { result } = renderHook(() => useClaimItemForm());
 
     act(() => {
-      result.current.setCategory('Electronics');
-      result.current.setItemName('MacBook Pro');
-      result.current.setDescription('Black backpack');
+      fillRequiredFields(result);
       result.current.setImageFiles([
         new File(['x'], 'proof.png', { type: 'image/png' }),
       ]);

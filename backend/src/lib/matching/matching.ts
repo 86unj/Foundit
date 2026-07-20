@@ -5,12 +5,9 @@ import { ingestClaimSearchIndex } from './ingest';
 import { buildItemSearchText } from './searchText';
 import {
   buildMatchCriteria,
-  campusMatchScore,
-  categoryMatchScore,
   combineHybridScore,
   cosineSimilarity,
   dateProximityScore,
-  locationOverlapScore,
   retentionUrgencyScore,
 } from './scores';
 
@@ -49,10 +46,7 @@ export async function generateMatchCandidates(claimId: string): Promise<{
     where: { claimId },
     select: {
       claimId: true,
-      campusId: true,
-      category: true,
       dateLost: true,
-      locationLost: true,
       embedding: true,
     },
   });
@@ -89,7 +83,6 @@ export async function generateMatchCandidates(claimId: string): Promise<{
     },
     select: {
       itemId: true,
-      campusId: true,
       category: true,
       dateFound: true,
       locationFound: true,
@@ -119,10 +112,7 @@ export async function generateMatchCandidates(claimId: string): Promise<{
 
     const hybridInput = {
       semanticSimilarity,
-      category: categoryMatchScore(claim.category, item.category),
       dateProximity: date.score,
-      campus: campusMatchScore(claim.campusId, item.campusId),
-      location: locationOverlapScore(claim.locationLost, item.locationFound),
       retention: retentionUrgencyScore(item.retentionExpiryDate, today),
     };
 

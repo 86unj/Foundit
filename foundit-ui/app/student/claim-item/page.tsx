@@ -30,9 +30,7 @@ import { PROFILE_PATH } from '@/utils/routes';
 // ─── NOTES FOR THE TEAM ──────────────────────────────────────────────────────
 // Student claim form. Lives under app/student/ so it inherits RoleShell
 // (Navbar/Footer) from app/student/layout.tsx and the middleware's
-// student-role gate. The hero background/overlay are position:fixed at
-// zIndex 0: above RoleShell's gray.50 page background, below the sticky
-// Navbar (zIndex 10) and Footer (zIndex 1).
+// student-role gate. FixedPageBackground sits behind the form content.
 //
 // Layout: Contact info (read-only identity), then Item details
 // (required + optional item fields).

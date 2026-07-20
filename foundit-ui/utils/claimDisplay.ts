@@ -473,8 +473,8 @@ export function matchesClaimStatusFilter(
   if (!filter) return true;
 
   switch (filter) {
-    case 'needs_action':
-      return getClaimSecurityQueue(claim) === 'action';
+    case 'match_pending':
+      return claimAwaitingMatchConfirmation(claim);
 
     case 'ready_for_pickup':
       return claim.status === 'approved';

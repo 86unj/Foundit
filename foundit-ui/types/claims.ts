@@ -114,6 +114,7 @@ export interface MatchSuggestion {
     locationFound: string | null;
     dateFound: string;
     descriptionPublic: string | null;
+    imageUrl: string | null;
   };
   reviewer: {
     userId: string;

@@ -1,27 +1,3 @@
-function tokenize(text: string | null | undefined): Set<string> {
-  if (!text) {
-    return new Set<string>();
-  }
-
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 3)
-  );
-}
-
-function intersectionSize(left: Set<string>, right: Set<string>): number {
-  let count = 0;
-  for (const token of left) {
-    if (right.has(token)) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
 export function cosineSimilarity(left: number[], right: number[]): number {
   if (left.length === 0 || right.length === 0 || left.length !== right.length) {
     return 0;
@@ -68,32 +44,6 @@ export function dateProximityScore(
   return { score: 0.1, valid: true };
 }
 
-export function categoryMatchScore(
-  claimCategory: string,
-  itemCategory: string
-): number {
-  return claimCategory.toLowerCase() === itemCategory.toLowerCase() ? 1 : 0;
-}
-
-export function campusMatchScore(
-  claimCampusId: string,
-  itemCampusId: string
-): number {
-  return claimCampusId === itemCampusId ? 1 : 0.3;
-}
-
-export function locationOverlapScore(
-  locationLost: string | null,
-  locationFound: string | null
-): number {
-  const claimTokens = tokenize(locationLost);
-  const itemTokens = tokenize(locationFound);
-  if (claimTokens.size === 0 || itemTokens.size === 0) {
-    return 0;
-  }
-  return intersectionSize(claimTokens, itemTokens) > 0 ? 1 : 0;
-}
-
 export function retentionUrgencyScore(
   retentionExpiryDate: Date | null,
   today: Date
@@ -115,20 +65,14 @@ export function retentionUrgencyScore(
 
 export interface HybridScoreInput {
   semanticSimilarity: number;
-  category: number;
   dateProximity: number;
-  campus: number;
-  location: number;
   retention: number;
 }
 
 export function combineHybridScore(input: HybridScoreInput): number {
   const weighted =
-    0.5 * input.semanticSimilarity +
-    0.15 * input.category +
+    0.8 * input.semanticSimilarity +
     0.15 * input.dateProximity +
-    0.1 * input.campus +
-    0.05 * input.location +
     0.05 * input.retention;
 
   return Math.round(Math.max(0, Math.min(1, weighted)) * 100);
@@ -137,10 +81,7 @@ export function combineHybridScore(input: HybridScoreInput): number {
 export function buildMatchCriteria(input: HybridScoreInput): string {
   const criteria: string[] = ['semantic'];
 
-  if (input.category > 0) criteria.push('category');
   if (input.dateProximity >= 0.7) criteria.push('date');
-  if (input.campus >= 1) criteria.push('campus');
-  if (input.location > 0) criteria.push('location');
   if (input.retention < 1) criteria.push('retention');
 
   return criteria.join(',');
