@@ -47,7 +47,10 @@ describe('Navbar notifications entry', () => {
     fireEvent.click(await screen.findByLabelText(/Account menu/));
     fireEvent.click(await screen.findByText('Notifications'));
 
-    expect(pushMock).toHaveBeenCalledWith(NOTIFICATIONS_PATH);
+    const notificationsLink = screen.getByRole('link', {
+      name: /Notifications/,
+    });
+    expect(notificationsLink.getAttribute('href')).toBe(NOTIFICATIONS_PATH);
   });
 
   it('hides the notifications entry and skips the fetch for guests', () => {

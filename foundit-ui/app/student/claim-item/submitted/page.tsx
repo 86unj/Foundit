@@ -1,82 +1,80 @@
 'use client';
 
 import Link from 'next/link';
-import { Box, Button, Heading, Stack, Text } from '@chakra-ui/react';
+import { Box, Flex, Heading, Stack, Text } from '@chakra-ui/react';
+import { IoCheckmarkCircleOutline } from 'react-icons/io5';
+import { Button } from '@/components/ui/Button';
 import { FixedPageBackground } from '@/components/PageBackground';
 import { ROLE_HOME } from '@/utils/routes';
 
-// Confirmation screen the student lands on after a successful claim submit
-// (useClaimItemForm pushes CLAIM_SUBMITTED_PATH). Mirrors the
-// report-found/submitted pattern, but lives under app/student/ so it inherits
-// RoleShell and the student-role gate, and reuses claim-item's fixed hero
-// background so the transition from the form feels seamless.
+// Confirmation screen after a successful claim submit (useClaimItemForm
+// pushes CLAIM_SUBMITTED_PATH). Lives under app/student/ so it inherits
+// RoleShell and the student-role gate.
 export default function ClaimSubmittedPage() {
   return (
     <>
-      {/* Same full-bleed hero as app/student/claim-item/page.tsx. */}
       <FixedPageBackground overlay />
 
       <Box
         position="relative"
         zIndex={1}
         display="flex"
-        flexDirection="column"
         alignItems="center"
-        gap={8}
+        justifyContent="center"
+        px={4}
+        py={{ base: 8, md: 12 }}
       >
-        <Heading
-          as="h1"
-          color="white"
-          fontSize={{ base: '2xl', md: '4xl' }}
-          fontWeight="bold"
-          textAlign="center"
-        >
-          Claim Your Lost Item
-        </Heading>
-
         <Stack
           bg="white"
           rounded="md"
           shadow="md"
-          maxW="985px"
+          maxW="560px"
           w="full"
-          minH="420px"
-          p={{ base: 6, md: 12 }}
-          gap={2}
+          p={{ base: 8, md: 12 }}
+          gap={8}
+          align="center"
+          textAlign="center"
         >
-          {/* Heading stays pinned at the top, centered; the body centers in
-              the remaining card space below. */}
-          <Heading
-            fontSize="40px"
-            color="black"
-            fontWeight="bold"
-            textAlign="center"
-          >
-            Claim Submitted!
-          </Heading>
-
-          {/* Body centers in the space left under the heading. */}
-          <Stack
-            flex={1}
+          <Flex
+            w={16}
+            h={16}
+            rounded="full"
+            bg="blue.50"
+            color="blue.600"
             align="center"
             justify="center"
-            textAlign="center"
-            gap={6}
+            flexShrink={0}
+            aria-hidden
           >
-            <Stack gap={4} align="center" maxW="700px">
-              <Text color="fg.muted">
-                Your claim has been received and is now under review.
-              </Text>
-              <Text color="fg.muted">
-                Our security team will verify the details and contact you once
-                there is an update.
-              </Text>
-            </Stack>
+            <IoCheckmarkCircleOutline size={36} />
+          </Flex>
 
-            <Button asChild colorPalette="blue" size="lg" mt={2}>
-              <Link href={ROLE_HOME.student}>Back to Dashboard</Link>
-            </Button>
+          <Stack gap={3} align="center" maxW="420px">
+            <Heading
+              as="h1"
+              fontSize={{ base: '2xl', md: '40px' }}
+              color="fg"
+              fontWeight="bold"
+              lineHeight="short"
+            >
+              Claim submitted
+            </Heading>
+            <Text color="fg.muted" fontSize="md" lineHeight="tall">
+              Your claim has been received and is now under review. Security
+              will verify the details and contact you when there is an update.
+            </Text>
           </Stack>
+
+          <Button
+            asChild
+            variant="primary"
+            size="lg"
+            h="48px"
+            px={8}
+            rounded="12px"
+          >
+            <Link href={ROLE_HOME.student}>Back to Dashboard</Link>
+          </Button>
         </Stack>
       </Box>
     </>

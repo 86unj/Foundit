@@ -8,14 +8,29 @@ interface FixedPageBackgroundProps {
   overlay?: boolean;
 }
 
+/** Viewport-fixed page backdrop — always covers, including tall windows. */
 export function FixedPageBackground({
   overlay = false,
 }: FixedPageBackgroundProps) {
   return (
     <>
-      <Box position="fixed" inset={0} zIndex={0} {...PAGE_BACKGROUND_PROPS} />
+      <Box
+        position="fixed"
+        inset={0}
+        zIndex={0}
+        pointerEvents="none"
+        aria-hidden
+        {...PAGE_BACKGROUND_PROPS}
+      />
       {overlay && (
-        <Box position="fixed" inset={0} bg="blackAlpha.700" zIndex={0} />
+        <Box
+          position="fixed"
+          inset={0}
+          bg="blackAlpha.700"
+          zIndex={0}
+          pointerEvents="none"
+          aria-hidden
+        />
       )}
     </>
   );
