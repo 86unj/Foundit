@@ -1,6 +1,6 @@
 'use client';
 
-import { Flex, Grid, Heading, Stack, Text } from '@chakra-ui/react';
+import { Flex, Grid, Heading, Image, Stack, Text } from '@chakra-ui/react';
 import { IoImageOutline } from 'react-icons/io5';
 import type { SecurityClaimDetail } from '@/types/claims';
 import { formatClaimDate } from '@/utils/claimDisplay';
@@ -33,11 +33,22 @@ export function ClaimMatchedItemCard({ claim }: ClaimMatchedItemCardProps) {
           borderColor="gray.200"
           align="center"
           justify="center"
+          overflow="hidden"
           color="gray.400"
           fontSize="2xl"
           flexShrink={0}
         >
-          <IoImageOutline />
+          {item.imageUrl ? (
+            <Image
+              src={item.imageUrl}
+              alt={item.title}
+              w="full"
+              h="full"
+              objectFit="cover"
+            />
+          ) : (
+            <IoImageOutline />
+          )}
         </Flex>
         <Stack gap={1} minW={0}>
           <Text fontSize="xs" color="gray.500">

@@ -88,6 +88,15 @@ const claimListSelect = {
       color: true,
       locationFound: true,
       dateFound: true,
+      images: {
+        select: {
+          imageUrl: true,
+        },
+        take: 1,
+        orderBy: {
+          createdAt: 'asc' as const,
+        },
+      },
     },
   },
   images: {
@@ -147,6 +156,15 @@ const matchSuggestionSelect = {
       locationFound: true,
       dateFound: true,
       descriptionPublic: true,
+      images: {
+        select: {
+          imageUrl: true,
+        },
+        take: 1,
+        orderBy: {
+          createdAt: 'asc' as const,
+        },
+      },
     },
   },
   reviewer: {
@@ -195,6 +213,8 @@ async function toClaimListItemDto(claim: ClaimListRow) {
     }))
   );
 
+  const matchedItemImageUrl = claim.item?.images[0]?.imageUrl ?? null;
+
   return {
     claimId: claim.claimId,
     studentId: claim.studentId,
@@ -242,6 +262,9 @@ async function toClaimListItemDto(claim: ClaimListRow) {
           color: claim.item.color,
           locationFound: claim.item.locationFound,
           dateFound: claim.item.dateFound,
+          imageUrl: matchedItemImageUrl
+            ? await resolveImageUrl(matchedItemImageUrl)
+            : null,
         }
       : null,
     images,
@@ -273,7 +296,9 @@ async function toClaimDetailDto(claim: ClaimDetailRow) {
   };
 }
 
-function toMatchSuggestionDto(match: MatchSuggestionRow) {
+async function toMatchSuggestionDto(match: MatchSuggestionRow) {
+  const storedImageUrl = match.item.images[0]?.imageUrl ?? null;
+
   return {
     matchId: match.matchId,
     claimId: match.claimId,
@@ -295,6 +320,7 @@ function toMatchSuggestionDto(match: MatchSuggestionRow) {
       locationFound: match.item.locationFound,
       dateFound: match.item.dateFound,
       descriptionPublic: match.item.descriptionPublic,
+      imageUrl: storedImageUrl ? await resolveImageUrl(storedImageUrl) : null,
     },
     reviewer: match.reviewer
       ? {
@@ -1404,7 +1430,11 @@ router.get(
         select: matchSuggestionSelect,
       });
 
-      res.status(200).json(matches.map((match) => toMatchSuggestionDto(match)));
+      res
+        .status(200)
+        .json(
+          await Promise.all(matches.map((match) => toMatchSuggestionDto(match)))
+        );
     } catch (err) {
       next(err);
     }
@@ -1486,7 +1516,11 @@ router.post(
         select: matchSuggestionSelect,
       });
 
-      res.status(200).json(matches.map((match) => toMatchSuggestionDto(match)));
+      res
+        .status(200)
+        .json(
+          await Promise.all(matches.map((match) => toMatchSuggestionDto(match)))
+        );
     } catch (err) {
       next(err);
     }
@@ -1686,7 +1720,7 @@ router.patch(
         ]);
       }
 
-      res.status(200).json(toMatchSuggestionDto(updated));
+      res.status(200).json(await toMatchSuggestionDto(updated));
     } catch (err) {
       if (err instanceof Error && err.name === 'MATCH_ITEM_NOT_STORED') {
         res.status(409).json({
