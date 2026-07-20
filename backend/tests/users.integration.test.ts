@@ -130,6 +130,7 @@ describe('users routes', () => {
     expect(res.body.email).toBe('student@myseneca.ca');
     expect(res.body.campusName).toBe('Newnham');
     expect(res.body.studentNumber).toBe(123456789);
+    expect(res.body.phone).toBeUndefined();
   });
 
   test('PUT /api/users/me updates profile', async () => {
@@ -137,7 +138,7 @@ describe('users routes', () => {
       ...userRow,
       firstName: 'Maggie',
       lastName: 'Hsu',
-      phone: '4161234567',
+      studentNumber: BigInt(123456789),
     };
 
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(userRow);
@@ -148,12 +149,13 @@ describe('users routes', () => {
     const res = await request(app).put('/api/users/me').send({
       firstName: 'Maggie',
       lastName: 'Hsu',
-      phone: '4161234567',
+      studentNumber: 123456789,
     });
 
     expect(res.status).toBe(200);
     expect(res.body.firstName).toBe('Maggie');
-    expect(res.body.phone).toBe('4161234567');
+    expect(res.body.studentNumber).toBe(123456789);
+    expect(res.body.phone).toBeUndefined();
 
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -161,7 +163,7 @@ describe('users routes', () => {
         data: {
           firstName: 'Maggie',
           lastName: 'Hsu',
-          phone: '4161234567',
+          studentNumber: BigInt(123456789),
         },
       })
     );
@@ -174,6 +176,22 @@ describe('users routes', () => {
         entityId: 'student-1',
       })
     );
+  });
+
+  test('PUT /api/users/me returns 409 when student number is taken', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(userRow);
+    vi.mocked(prisma.user.update).mockRejectedValueOnce({ code: 'P2002' });
+
+    const app = createTestApp();
+
+    const res = await request(app).put('/api/users/me').send({
+      firstName: 'Casey',
+      lastName: 'Hsu',
+      studentNumber: 987654321,
+    });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('STUDENT_NUMBER_TAKEN');
   });
 
   test('PATCH /api/users/me/notifications returns 501 because it is not implemented yet', async () => {

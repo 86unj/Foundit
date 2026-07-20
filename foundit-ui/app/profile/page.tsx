@@ -46,13 +46,16 @@ function ProfileSettingsContent() {
   const {
     fullName,
     email,
-    phoneNumber,
-    setPhoneNumber,
+    studentId,
+    setStudentId,
+    studentIdError,
+    setStudentIdError,
     allowEmailNotifications,
     setAllowEmailNotifications,
     isLoading,
     isSaving,
     saveStatus,
+    saveErrorMessage,
     handleSave,
     initials,
   } = useProfileForm();
@@ -227,18 +230,23 @@ function ProfileSettingsContent() {
                             readOnly
                           />
 
-                          <TextInput
-                            id="phoneNumber"
-                            label="Phone Number"
-                            type="tel"
-                            autoComplete="tel"
-                            hint="10 digits (e.g. 4161234567). Dashes and spaces are OK."
-                            value={phoneNumber}
-                            width="full"
-                            onChange={(e) => setPhoneNumber(e.target.value)}
-                          />
+                          {navVariant === 'student' && (
+                            <TextInput
+                              id="studentId"
+                              label="Student ID"
+                              value={studentId}
+                              width="full"
+                              inputMode="numeric"
+                              autoComplete="off"
+                              error={studentIdError}
+                              onChange={(e) => {
+                                setStudentId(e.target.value);
+                                setStudentIdError('');
+                              }}
+                            />
+                          )}
 
-                          <HStack gap={4} align="center">
+                          {/* <HStack gap={4} align="center">
                             <Text fontSize="sm" color="gray.700">
                               Allow email notifications
                             </Text>
@@ -254,7 +262,7 @@ function ProfileSettingsContent() {
                                 <Switch.Thumb />
                               </Switch.Control>
                             </Switch.Root>
-                          </HStack>
+                          </HStack> */}
                         </Stack>
 
                         {/* Save row */}
@@ -267,7 +275,11 @@ function ProfileSettingsContent() {
                             fontSize="md"
                             loading={isSaving}
                             loadingText="Saving..."
-                            onClick={handleSave}
+                            onClick={() =>
+                              handleSave({
+                                includeStudentId: navVariant === 'student',
+                              })
+                            }
                           >
                             Save
                           </Button>
@@ -287,7 +299,8 @@ function ProfileSettingsContent() {
                               color="red.600"
                               fontWeight="medium"
                             >
-                              Save failed. Please try again.
+                              {saveErrorMessage ||
+                                'Save failed. Please try again.'}
                             </Text>
                           )}
                         </HStack>
