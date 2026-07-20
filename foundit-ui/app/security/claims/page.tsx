@@ -381,7 +381,7 @@ export default function SecurityClaimsPage() {
           >
             <option value="pending">Active claims</option>
             <option value="">All statuses</option>
-            <option value="needs_action">Needs action</option>
+            <option value="match_pending">Match pending</option>
             <option value="ready_for_pickup">Ready for pickup</option>
             <option value="completed">Completed</option>
             <option value="rejected">Closed (rejected)</option>

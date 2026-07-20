@@ -28,8 +28,17 @@ export async function refreshClaimMatchSuggestions(
   const { candidates: scoredCandidates, candidateCount } =
     await generateMatchCandidates(claim.claimId);
 
-  if (scoredCandidates.length > 0) {
-    await prisma.$transaction(async (tx) => {
+  const keepItemIds = scoredCandidates.map((candidate) => candidate.itemId);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.matchSuggestion.deleteMany({
+      where: {
+        claimId: claim.claimId,
+        ...(keepItemIds.length > 0 ? { itemId: { notIn: keepItemIds } } : {}),
+      },
+    });
+
+    if (scoredCandidates.length > 0) {
       await Promise.all(
         scoredCandidates.map((candidate) =>
           tx.matchSuggestion.upsert({
@@ -60,8 +69,19 @@ export async function refreshClaimMatchSuggestions(
         },
         data: { status: ClaimStatus.under_review },
       });
-    });
-  }
+    } else {
+      // No qualifying matches — return to unmatched/submitted so the UI
+      // does not stay stuck in "under review" with an empty suggestion list.
+      await tx.claim.updateMany({
+        where: {
+          claimId: claim.claimId,
+          status: ClaimStatus.under_review,
+          itemId: null,
+        },
+        data: { status: ClaimStatus.submitted },
+      });
+    }
+  });
 
   return {
     candidateCount,

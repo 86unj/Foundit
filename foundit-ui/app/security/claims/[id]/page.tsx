@@ -119,7 +119,9 @@ export default function ClaimDetailPage({
         const matchData = await loadMatches(claimData);
 
         let resolvedClaim = claimData;
-        if (matchData.length > 0 && claimNeedsAutoMatch(claimData)) {
+        if (claimNeedsAutoMatch(claimData)) {
+          // Status may move submitted <-> under_review depending on whether
+          // any suggestions qualified — always reload after generation.
           resolvedClaim = await fetchClaimById(claimId).catch(() => claimData);
         }
 
