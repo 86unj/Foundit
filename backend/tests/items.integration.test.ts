@@ -322,14 +322,12 @@ describe('items routes', () => {
     const tx = {
       claim: {
         findFirst: vi.fn().mockResolvedValue(null),
-        findMany: vi
-          .fn()
-          .mockResolvedValue([
-            {
-              claimId: '550e8400-e29b-41d4-a716-446655440099',
-              status: 'submitted',
-            },
-          ]),
+        findMany: vi.fn().mockResolvedValue([
+          {
+            claimId: '550e8400-e29b-41d4-a716-446655440099',
+            status: 'submitted',
+          },
+        ]),
         updateMany: vi.fn(),
       },
       item: {
