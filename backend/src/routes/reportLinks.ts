@@ -10,7 +10,7 @@ import rateLimit from 'express-rate-limit';
 import authenticate from '../middleware/authenticate';
 import requireRole from '../middleware/requireRole';
 import { prisma } from '../db';
-import { writeAuditLog } from '../utils/auditLog';
+import { auditContextFromRequest, writeAuditLog } from '../utils/auditLog';
 import { scheduleItemSearchIndexIngest } from '../lib/matching/ingest';
 import { scheduleMatchRefreshForCampus } from '../lib/matching/suggestions';
 import { generateReportLinkToken } from '../utils/reportLinkToken';
@@ -210,28 +210,18 @@ async function createReportLinkRecord(
     campusId: string;
     expiresAt: Date;
   },
-  retryOnCollision = true
+  client: Pick<Prisma.TransactionClient, 'reportLink'> = prisma
 ) {
-  try {
-    return await prisma.reportLink.create({
-      data,
-      select: {
-        linkId: true,
-        token: true,
-        campusId: true,
-        expiresAt: true,
-        createdAt: true,
-      },
-    });
-  } catch (err) {
-    if (retryOnCollision && isUniqueTokenError(err)) {
-      return createReportLinkRecord(
-        { ...data, token: generateReportLinkToken() },
-        false
-      );
-    }
-    throw err;
-  }
+  return client.reportLink.create({
+    data,
+    select: {
+      linkId: true,
+      token: true,
+      campusId: true,
+      expiresAt: true,
+      createdAt: true,
+    },
+  });
 }
 
 /**
@@ -312,23 +302,39 @@ router.post(
       }
 
       const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
-      const token = generateReportLinkToken();
-
-      const link = await createReportLinkRecord({
-        token,
-        generatedBy: actor.userId,
-        campusId,
-        expiresAt,
-      });
-
-      await writeAuditLog({
-        actorId: actor.userId,
-        action: 'report_link_created',
-        entityType: 'report_link',
-        entityId: link.linkId,
-        details: { campusId, expiresAt: expiresAt.toISOString() },
-        ipAddress: req.ip,
-      });
+      const createContext = auditContextFromRequest(req);
+      let link: Awaited<ReturnType<typeof createReportLinkRecord>> | null =
+        null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const token = generateReportLinkToken();
+        try {
+          link = await prisma.$transaction(async (tx) => {
+            const created = await createReportLinkRecord(
+              { token, generatedBy: actor.userId, campusId, expiresAt },
+              tx
+            );
+            await writeAuditLog(
+              {
+                actorId: actor.userId,
+                actorType: 'user',
+                action: 'report_link_created',
+                entityType: 'report_link',
+                entityId: created.linkId,
+                outcome: 'success',
+                details: { campusId, expiresAt: expiresAt.toISOString() },
+                ...createContext,
+              },
+              tx
+            );
+            return created;
+          });
+          break;
+        } catch (err) {
+          if (attempt === 0 && isUniqueTokenError(err)) continue;
+          throw err;
+        }
+      }
+      if (!link) throw new Error('REPORT_LINK_CREATE_FAILED');
 
       res.status(201).json({
         linkId: link.linkId,
@@ -575,6 +581,7 @@ router.post(
         images,
       } = req.body as SubmitFoundItemReportInput;
 
+      const submitContext = auditContextFromRequest(req);
       const result = await prisma.$transaction(async (tx) => {
         const campus = await tx.campus.findUnique({
           where: { campusId: link.campusId },
@@ -679,7 +686,7 @@ router.post(
         }
 
         // Confirm receipt to the finder in the same transaction.
-        await tx.notification.create({
+        const notification = await tx.notification.create({
           data: {
             recipientId: req.user!.user_id,
             type: NotificationType.report_confirmation,
@@ -689,6 +696,66 @@ router.post(
             referenceId: item.itemId,
           },
         });
+
+        await Promise.all([
+          writeAuditLog(
+            {
+              actorId: req.user!.user_id,
+              actorType: 'user',
+              action: 'report_created',
+              entityType: 'found_item_report',
+              entityId: linkedReport.reportId,
+              outcome: 'success',
+              details: { category, campusId: link.campusId },
+              ...submitContext,
+            },
+            tx
+          ),
+          writeAuditLog(
+            {
+              actorId: req.user!.user_id,
+              actorType: 'user',
+              action: 'item_created',
+              entityType: 'item',
+              entityId: item.itemId,
+              outcome: 'success',
+              details: {
+                category,
+                campusId: link.campusId,
+                source: 'found_item_report',
+                imageCount: images.length,
+              },
+              ...submitContext,
+            },
+            tx
+          ),
+          writeAuditLog(
+            {
+              actorId: req.user!.user_id,
+              actorType: 'user',
+              action: 'report_link_consumed',
+              entityType: 'report_link',
+              entityId: link.linkId,
+              outcome: 'success',
+              details: { reportId: linkedReport.reportId },
+              ...submitContext,
+            },
+            tx
+          ),
+          writeAuditLog(
+            {
+              actorId: req.user!.user_id,
+              actorType: 'user',
+              action: 'notification_created',
+              entityType: 'notification',
+              entityId: notification.notificationId,
+              outcome: 'success',
+              details: { reportId: linkedReport.reportId, itemId: item.itemId },
+              ...submitContext,
+            },
+            tx
+          ),
+        ]);
 
         return { report: linkedReport, itemId: item.itemId };
       });

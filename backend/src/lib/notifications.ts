@@ -1,4 +1,5 @@
 import { NotificationType, Prisma, UserRole } from '@prisma/client';
+import { writeAuditLog } from '../utils/auditLog';
 
 /** Short human-readable fallback when a claim has no item name. */
 export function shortClaimRef(claimId: string): string {
@@ -44,8 +45,15 @@ export async function fanOutToCampusSecurity(
     message: string;
     referenceType?: string | null;
     referenceId?: string | null;
+  },
+  audit?: {
+    actorId?: string | null;
+    actorType: 'user' | 'system';
+    requestId?: string;
+    runId?: string;
+    ipAddress?: string;
   }
-): Promise<void> {
+): Promise<number> {
   const recipients = await tx.user.findMany({
     where: {
       role: { in: [UserRole.security, UserRole.admin] },
@@ -56,7 +64,7 @@ export async function fanOutToCampusSecurity(
   });
 
   if (recipients.length === 0) {
-    return;
+    return 0;
   }
 
   await tx.notification.createMany({
@@ -69,4 +77,25 @@ export async function fanOutToCampusSecurity(
       referenceId: input.referenceId ?? null,
     })),
   });
+
+  if (audit) {
+    await writeAuditLog(
+      {
+        ...audit,
+        action: 'notification_fanout_created',
+        entityType: 'notification',
+        entityId: input.referenceId ?? null,
+        outcome: 'success',
+        details: {
+          recipientCount: recipients.length,
+          sourceEntityType: input.referenceType ?? null,
+          sourceEntityId: input.referenceId ?? null,
+          notificationType: input.type,
+        },
+      },
+      tx
+    );
+  }
+
+  return recipients.length;
 }

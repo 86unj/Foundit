@@ -40,7 +40,16 @@ vi.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: vi.fn(),
 }));
 
+vi.mock('../src/utils/auditLog', () => ({
+  auditContextFromRequest: vi.fn(() => ({
+    requestId: '11111111-1111-4111-8111-111111111111',
+    ipAddress: '127.0.0.1',
+  })),
+  writeAuditLogBestEffort: vi.fn(),
+}));
+
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { writeAuditLogBestEffort } from '../src/utils/auditLog';
 
 function createTestApp() {
   const app = express();
@@ -126,5 +135,21 @@ describe('uploads routes', () => {
     expect(res.body.imageUrl).toMatch(/^reports\/.+\.png$/);
     expect(res.body.fileType).toBe('png');
     expect(res.body.fileSizeKb).toBe(500);
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'upload_authorized',
+        actorId: 'security-1',
+        details: {
+          contentType: 'image/png',
+          sizeCategory: 'up_to_1mb',
+        },
+      })
+    );
+    expect(
+      JSON.stringify(vi.mocked(writeAuditLogBestEffort).mock.calls)
+    ).not.toContain('fake-upload-url');
+    expect(
+      JSON.stringify(vi.mocked(writeAuditLogBestEffort).mock.calls)
+    ).not.toContain('phone.png');
   });
 });

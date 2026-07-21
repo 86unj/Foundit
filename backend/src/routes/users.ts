@@ -9,7 +9,7 @@ import {
   replaceProfileSchema,
   updateNotificationSchema,
 } from '../validators/users';
-import { writeAuditLog } from '../utils/auditLog';
+import { auditContextFromRequest, writeAuditLog } from '../utils/auditLog';
 
 const router = Router();
 
@@ -226,13 +226,37 @@ router.put(
 
       let updated;
       try {
-        updated = await prisma.user.update({
-          where: { userId },
-          data,
-          select: {
-            ...userProfileSelect,
-            campus: { select: { campusName: true } },
-          },
+        const context = auditContextFromRequest(req);
+        const changedFields = [
+          ...(existing.firstName !== firstName ? ['firstName'] : []),
+          ...(existing.lastName !== lastName ? ['lastName'] : []),
+          ...(isStudent && studentNumber !== undefined
+            ? ['studentNumber']
+            : []),
+        ];
+        updated = await prisma.$transaction(async (tx) => {
+          const profile = await tx.user.update({
+            where: { userId },
+            data,
+            select: {
+              ...userProfileSelect,
+              campus: { select: { campusName: true } },
+            },
+          });
+          await writeAuditLog(
+            {
+              actorId: userId,
+              actorType: 'user',
+              action: 'user_profile_updated',
+              entityType: 'user',
+              entityId: userId,
+              outcome: 'success',
+              details: { changedFields },
+              ...context,
+            },
+            tx
+          );
+          return profile;
         });
       } catch (err: unknown) {
         if (
@@ -249,31 +273,6 @@ router.put(
         }
         throw err;
       }
-
-      await writeAuditLog({
-        actorId: userId,
-        action: 'user_profile_updated',
-        entityType: 'user',
-        entityId: userId,
-        details: {
-          previous: {
-            firstName: existing.firstName,
-            lastName: existing.lastName,
-            studentNumber:
-              existing.studentNumber !== null
-                ? Number(existing.studentNumber)
-                : null,
-          },
-          updated: {
-            firstName,
-            lastName,
-            ...(isStudent && studentNumber !== undefined
-              ? { studentNumber }
-              : {}),
-          },
-        },
-        ipAddress: req.ip,
-      });
 
       res.status(200).json(toUserProfileDto(updated));
     } catch (err) {

@@ -45,6 +45,7 @@ function createTx() {
     },
     auditLog: {
       create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
+      createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
   };
 }
@@ -75,6 +76,39 @@ describe('expireDueItems notifications', () => {
           message: 'Your claim for "iPhone 15" is now rejected.',
         }),
       ],
+    });
+    const auditRows = tx.auditLog.createMany.mock.calls.flatMap(
+      ([input]) => input.data
+    );
+    expect(auditRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'item_auto_expired',
+          actorType: 'system',
+          entityId: 'item-1',
+          runId: expect.any(String),
+        }),
+        expect.objectContaining({
+          action: 'claim_status_updated',
+          actorType: 'system',
+          entityId: '550e8400-e29b-41d4-a716-446655440000',
+          runId: expect.any(String),
+        }),
+      ])
+    );
+    expect(new Set(auditRows.map((row) => row.runId))).toHaveProperty(
+      'size',
+      1
+    );
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'notification_fanout_created',
+        actorType: 'system',
+        runId: auditRows[0].runId,
+        details: expect.objectContaining({
+          notificationType: 'claim_status_update',
+        }),
+      }),
     });
     expect(tx.notification.createMany).toHaveBeenCalledWith({
       data: [

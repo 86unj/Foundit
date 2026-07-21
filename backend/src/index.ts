@@ -17,6 +17,7 @@ import { startCleanupJob } from './jobs/cleanupUnverifiedUsers';
 import { startExpireRetainedItemsJob } from './jobs/expireRetainedItems';
 import uploadsRouter from './routes/uploads';
 import photoSessionsRouter from './routes/photoSessions';
+import requestContext from './middleware/requestContext';
 
 // Fail fast if required JWT secrets are missing
 if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
@@ -31,6 +32,7 @@ const PORT = parseInt(process.env.PORT || '3001');
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
 app.use(express.json());
+app.use(requestContext);
 
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use('/api/health', healthRouter);

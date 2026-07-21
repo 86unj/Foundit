@@ -4,7 +4,7 @@ import {
   Prisma,
 } from '@prisma/client';
 import { prisma } from '../db';
-import { writeAuditLog } from '../utils/auditLog';
+import { writeAuditLogBestEffort } from '../utils/auditLog';
 import { sendNotificationEmail } from './email';
 import { logger } from './logger';
 
@@ -33,6 +33,7 @@ export interface StudentClaimEmailTarget {
 interface StudentClaimEmailContext {
   actorId?: string;
   ipAddress?: string;
+  requestId?: string;
   event: string;
 }
 
@@ -58,34 +59,27 @@ async function recordStudentClaimEmailAudit(
   context: StudentClaimEmailContext,
   status: 'sent' | 'failed'
 ) {
-  try {
-    await writeAuditLog({
-      actorId: context.actorId,
-      action:
-        status === 'sent'
-          ? 'claim_email_notification_sent'
-          : 'claim_email_notification_failed',
-      entityType: 'notification',
-      entityId: notification.notificationId,
-      details: {
-        claimId: claim.claimId,
-        recipientId: claim.studentId,
-        notificationType: notification.type,
-        event: context.event,
-        emailDeliveryStatus: status,
-      },
-      ipAddress: context.ipAddress,
-    });
-  } catch (err) {
-    logger.warn(
-      {
-        err,
-        notificationId: notification.notificationId,
-        claimId: claim.claimId,
-      },
-      'Failed to write student claim email audit log'
-    );
-  }
+  await writeAuditLogBestEffort({
+    actorId: context.actorId,
+    actorType: context.actorId ? 'user' : 'anonymous',
+    action:
+      status === 'sent'
+        ? 'claim_email_notification_sent'
+        : 'claim_email_notification_failed',
+    entityType: 'notification',
+    entityId: notification.notificationId,
+    outcome: status === 'sent' ? 'success' : 'failure',
+    reasonCode: status === 'failed' ? 'email_delivery_failed' : null,
+    details: {
+      claimId: claim.claimId,
+      recipientId: claim.studentId,
+      notificationType: notification.type,
+      event: context.event,
+      emailDeliveryStatus: status,
+    },
+    ipAddress: context.ipAddress,
+    requestId: context.requestId,
+  });
 }
 
 export async function deliverStudentClaimEmail(
