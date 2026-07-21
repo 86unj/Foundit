@@ -1,33 +1,28 @@
 import { z } from 'zod';
 
 // PUT /api/users/me — replaces the user's editable profile fields.
-// phone: null clears the number; a 10-digit string sets it.
 export const replaceProfileSchema = z.object({
   firstName: z.string().min(1).max(100).trim(),
   lastName: z.string().min(1).max(100).trim(),
-  phone: z
-    .string()
-    .regex(/^\d{10}$/)
-    .nullable(),
+  studentNumber: z
+    .union([z.null(), z.coerce.number().int().min(100000000).max(999999999)])
+    .optional(),
 });
 
 // PATCH /api/users/me — all fields optional but at least one must be present.
-// phone: null = clear the number; undefined = no change; "1234567890" = set new value.
 export const updateProfileSchema = z
   .object({
     firstName: z.string().min(1).max(100).trim().optional(),
     lastName: z.string().min(1).max(100).trim().optional(),
-    phone: z
-      .string()
-      .regex(/^\d{10}$/)
-      .nullable()
+    studentNumber: z
+      .union([z.null(), z.coerce.number().int().min(100000000).max(999999999)])
       .optional(),
   })
   .refine(
     (data) =>
       data.firstName !== undefined ||
       data.lastName !== undefined ||
-      data.phone !== undefined,
+      data.studentNumber !== undefined,
     {
       message: 'At least one field must be provided',
     }

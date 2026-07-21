@@ -1,9 +1,11 @@
 'use client';
+
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { FixedPageBackground } from '@/components/PageBackground';
-import { Box, Button, Heading, Stack, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, Heading, Stack, Text } from '@chakra-ui/react';
 import { useRouter } from 'next/navigation';
+import { IoMailOutline } from 'react-icons/io5';
 
 export default function SignupSuccessPage() {
   const router = useRouter();
@@ -26,27 +28,49 @@ export default function SignupSuccessPage() {
           display="flex"
           alignItems="center"
           justifyContent="center"
+          px={4}
         >
           <Stack
-            bg="bg"
+            bg="white"
             rounded="md"
             shadow="md"
-            p={8}
-            w="380px"
-            minH="235px"
-            alignItems="center"
+            w="532px"
+            maxW="full"
+            p={{ base: 8, md: '50px' }}
+            my={12}
+            gap={8}
+            align="center"
             textAlign="center"
           >
-            <Heading fontSize="40px" color="black" mb={6}>
-              Verify Email
-            </Heading>
+            <Flex
+              w={16}
+              h={16}
+              rounded="full"
+              bg="blue.50"
+              color="blue.600"
+              align="center"
+              justify="center"
+              flexShrink={0}
+              aria-hidden
+            >
+              <IoMailOutline size={32} />
+            </Flex>
 
-            <Text mb={12} color="fg.muted" pt={30}>
-              {' '}
-              Verification email sent.
-              <br />
-              Please verify your email to activate your account.
-            </Text>
+            <Stack gap={3} align="center" maxW="400px">
+              <Heading
+                as="h1"
+                fontSize={{ base: '2xl', md: '40px' }}
+                color="fg"
+                fontWeight="bold"
+                lineHeight="short"
+              >
+                Check your email
+              </Heading>
+              <Text color="fg.muted" fontSize="md" lineHeight="tall" mb={4}>
+                We sent a verification link to your Seneca email. Open it to
+                activate your account.
+              </Text>
+            </Stack>
 
             <Button
               w="172px"
@@ -60,6 +84,7 @@ export default function SignupSuccessPage() {
             </Button>
           </Stack>
         </Box>
+
         <Footer />
       </Box>
     </Box>

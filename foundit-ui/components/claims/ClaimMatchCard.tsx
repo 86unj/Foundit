@@ -1,6 +1,15 @@
 'use client';
 
-import { Badge, Box, Flex, Grid, Stack, Text, chakra } from '@chakra-ui/react';
+import {
+  Badge,
+  Box,
+  Flex,
+  Grid,
+  Image,
+  Stack,
+  Text,
+  chakra,
+} from '@chakra-ui/react';
 import { IoImageOutline } from 'react-icons/io5';
 import type { MatchSuggestion } from '@/types/claims';
 import { formatClaimDate } from '@/utils/claimDisplay';
@@ -88,13 +97,26 @@ export function ClaimMatchCard({
           h="88px"
           borderRadius="md"
           bg="gray.100"
+          borderWidth="1px"
+          borderColor="gray.200"
           align="center"
           justify="center"
+          overflow="hidden"
           color="gray.400"
           fontSize="2xl"
           flexShrink={0}
         >
-          <IoImageOutline />
+          {item.imageUrl ? (
+            <Image
+              src={item.imageUrl}
+              alt={item.title}
+              w="full"
+              h="full"
+              objectFit="cover"
+            />
+          ) : (
+            <IoImageOutline />
+          )}
         </Flex>
         <Stack gap={1.5} minW={0}>
           <Text fontSize="xs" color="gray.500">
