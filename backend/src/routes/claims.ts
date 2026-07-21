@@ -37,6 +37,7 @@ import {
 import { validate, validateQuery } from '../validators/shared';
 
 const router = Router();
+const MISSING_CAMPUS_ID = '00000000-0000-0000-0000-000000000000';
 
 const claimListSelect = {
   claimId: true,
@@ -68,6 +69,7 @@ const claimListSelect = {
       firstName: true,
       lastName: true,
       email: true,
+      emailNotificationOptIn: true,
       studentNumber: true,
     },
   },
@@ -580,7 +582,7 @@ async function notifySecurityOfClaimCancellation(
  *                 type: string
  *               notificationPreference:
  *                 type: string
- *                 enum: [email, phone, email_and_phone]
+ *                 enum: [email]
  *               dateLost:
  *                 type: string
  *                 format: date
@@ -621,26 +623,9 @@ router.post(
         return;
       }
 
-      // Temporary fallback: some student accounts currently have no campusId,
-      // but Claim.campusId is still required by the database schema. Use the
-      // first configured campus so claim submission can continue until campus
-      // selection is modeled explicitly on the claim form.
-      const campusId =
-        actor.campusId ??
-        (
-          await prisma.campus.findFirst({
-            select: { campusId: true },
-            orderBy: { campusName: 'asc' },
-          })
-        )?.campusId;
-
-      if (!campusId) {
-        res.status(409).json({
-          code: 'CLAIM_CAMPUS_REQUIRED',
-          message: 'A campus must be assigned before a claim can be submitted.',
-        });
-        return;
-      }
+      // Claims are campus-agnostic at submission time. Store them under the
+      // sentinel "missing" campus until campus selection is modeled explicitly.
+      const campusId = MISSING_CAMPUS_ID;
 
       const payload = req.body as CreateClaimInput;
 

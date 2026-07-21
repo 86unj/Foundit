@@ -245,17 +245,50 @@ router.put(
   }
 );
 
-// TODO: Toggle email_notification_opt_in (students only)
 router.patch(
   '/me/notifications',
   authenticate,
   requireRole('student'),
   validate(updateNotificationSchema),
-  (_req, res) => {
-    res.status(501).json({
-      code: 'NOT_IMPLEMENTED',
-      message: 'PATCH /api/users/me/notifications not yet implemented',
-    });
+  async (req, res, next) => {
+    try {
+      const userId = req.user!.user_id;
+      const existing = await loadActiveUserProfile(userId, res);
+      if (!existing) {
+        return;
+      }
+
+      const { emailNotificationOptIn } = req.body as z.infer<
+        typeof updateNotificationSchema
+      >;
+
+      const updated = await prisma.user.update({
+        where: { userId },
+        data: { emailNotificationOptIn },
+        select: {
+          ...userProfileSelect,
+          campus: { select: { campusName: true } },
+        },
+      });
+
+      await writeAuditLog({
+        actorId: userId,
+        action: 'user_notification_preferences_updated',
+        entityType: 'user',
+        entityId: userId,
+        details: {
+          previous: {
+            emailNotificationOptIn: existing.emailNotificationOptIn,
+          },
+          updated: { emailNotificationOptIn },
+        },
+        ipAddress: req.ip,
+      });
+
+      res.status(200).json(toUserProfileDto(updated));
+    } catch (err) {
+      next(err);
+    }
   }
 );
 

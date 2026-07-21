@@ -5,10 +5,7 @@ export type ApiClaimStatus =
   | 'picked_up'
   | 'under_review';
 
-export type ApiClaimNotificationPreference =
-  | 'email'
-  | 'phone'
-  | 'email_and_phone';
+export type ApiClaimNotificationPreference = 'email';
 
 export interface ClaimImage {
   imageId: string;

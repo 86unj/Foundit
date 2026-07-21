@@ -76,8 +76,6 @@ enum EmailDeliveryStatus {
 
 enum ClaimNotificationPreference {
   email
-  phone
-  email_and_phone
 
   @@map("claim_notification_preference")
 }

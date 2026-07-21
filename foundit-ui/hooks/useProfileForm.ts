@@ -118,7 +118,26 @@ export function useProfileForm() {
         }),
       });
 
-      setSaveStatus(profileRes.ok ? 'success' : 'error');
+      if (!profileRes.ok) {
+        setSaveStatus('error');
+        return;
+      }
+
+      const notificationRes = await fetch(
+        `${API_BASE}/api/users/me/notifications`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            emailNotificationOptIn: allowEmailNotifications,
+          }),
+        }
+      );
+
+      setSaveStatus(notificationRes.ok ? 'success' : 'error');
     } catch {
       setSaveStatus('error');
     } finally {

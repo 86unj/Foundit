@@ -21,11 +21,7 @@ const optionalDateSchema = z.iso
   .transform((value) => new Date(`${value}T00:00:00.000Z`))
   .optional();
 
-const claimNotificationPreferenceValues = [
-  'email',
-  'phone',
-  'email_and_phone',
-] as const;
+const claimNotificationPreferenceValues = ['email'] as const;
 
 export const claimParamsSchema = z.object({
   claimId: z.uuid(),

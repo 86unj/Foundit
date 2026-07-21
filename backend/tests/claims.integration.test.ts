@@ -64,6 +64,8 @@ vi.mock('../src/lib/email', () => ({
 import { prisma } from '../src/db';
 import { sendNotificationEmail } from '../src/lib/email';
 
+const MISSING_CAMPUS_ID = '00000000-0000-0000-0000-000000000000';
+
 function createTestApp() {
   const app = express();
   app.use(express.json());
@@ -142,6 +144,7 @@ const claimRow = {
     firstName: 'Casey',
     lastName: 'Hsu',
     email: 'student@myseneca.ca',
+    emailNotificationOptIn: false,
     studentNumber: null,
   },
   item: null,
@@ -150,6 +153,14 @@ const claimRow = {
   verifiedBy: null,
   reviewer: null,
   verifier: null,
+};
+
+const optedInClaimRow = {
+  ...claimRow,
+  student: {
+    ...claimRow.student,
+    emailNotificationOptIn: true,
+  },
 };
 
 describe('claims routes', () => {
@@ -261,10 +272,20 @@ describe('claims routes', () => {
   });
 
   function createClaimTx(securityRecipients: { userId: string }[]) {
+    const createdClaim = {
+      ...claimRow,
+      campusId: MISSING_CAMPUS_ID,
+      campus: {
+        ...claimRow.campus,
+        campusId: MISSING_CAMPUS_ID,
+        campusName: 'missing',
+      },
+    };
+
     return {
       claim: {
         create: vi.fn().mockResolvedValue({ claimId: claimRow.claimId }),
-        findUniqueOrThrow: vi.fn().mockResolvedValue(claimRow),
+        findUniqueOrThrow: vi.fn().mockResolvedValue(createdClaim),
       },
       itemImage: {
         createMany: vi.fn(),
@@ -284,7 +305,7 @@ describe('claims routes', () => {
     };
   }
 
-  test('POST /api/claims notifies active same-campus security staff', async () => {
+  test('POST /api/claims notifies active missing-campus security staff', async () => {
     mocks.authUser = { user_id: 'student-1', role: UserRole.student };
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
 
@@ -300,10 +321,17 @@ describe('claims routes', () => {
       .send({ category: 'Electronics', description: 'Lost my iPhone' });
 
     expect(res.status).toBe(201);
+    expect(tx.claim.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          campusId: MISSING_CAMPUS_ID,
+        }),
+      })
+    );
     expect(tx.user.findMany).toHaveBeenCalledWith({
       where: {
         role: { in: [UserRole.security, UserRole.admin] },
-        campusId: 'campus-1',
+        campusId: MISSING_CAMPUS_ID,
         isActive: true,
       },
       select: { userId: true },
@@ -324,14 +352,11 @@ describe('claims routes', () => {
     });
   });
 
-  test('POST /api/claims falls back to first campus record when student has no campusId', async () => {
+  test('POST /api/claims uses missing campus when student has no campusId', async () => {
     mocks.authUser = { user_id: 'student-1', role: UserRole.student };
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
       ...activeStudent,
       campusId: null,
-    });
-    vi.mocked(prisma.campus.findFirst).mockResolvedValueOnce({
-      campusId: 'campus-42',
     });
 
     const tx = createClaimTx([{ userId: 'security-1' }]);
@@ -346,14 +371,18 @@ describe('claims routes', () => {
       .send({ category: 'Electronics', description: 'Lost my iPhone' });
 
     expect(res.status).toBe(201);
-    expect(prisma.campus.findFirst).toHaveBeenCalledWith({
-      select: { campusId: true },
-      orderBy: { campusName: 'asc' },
-    });
+    expect(prisma.campus.findFirst).not.toHaveBeenCalled();
+    expect(tx.claim.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          campusId: MISSING_CAMPUS_ID,
+        }),
+      })
+    );
     expect(tx.user.findMany).toHaveBeenCalledWith({
       where: {
         role: { in: [UserRole.security, UserRole.admin] },
-        campusId: 'campus-42',
+        campusId: MISSING_CAMPUS_ID,
         isActive: true,
       },
       select: { userId: true },
@@ -429,10 +458,10 @@ describe('claims routes', () => {
   test('PATCH /api/claims/:claimId/status emails students when rejected', async () => {
     mocks.authUser = { user_id: 'security-1', role: UserRole.security };
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
-    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce(claimRow);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce(optedInClaimRow);
 
     const rejectedClaim = {
-      ...claimRow,
+      ...optedInClaimRow,
       status: ClaimStatus.rejected,
       rejectionReason: 'Not enough ownership details.',
     };
@@ -496,13 +525,13 @@ describe('claims routes', () => {
     mocks.authUser = { user_id: 'security-1', role: UserRole.security };
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
     vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce({
-      ...claimRow,
+      ...optedInClaimRow,
       itemId: '550e8400-e29b-41d4-a716-446655440010',
       status: ClaimStatus.approved,
     });
 
     const pickedUpClaim = {
-      ...claimRow,
+      ...optedInClaimRow,
       itemId: '550e8400-e29b-41d4-a716-446655440010',
       status: ClaimStatus.picked_up,
       pickedUpAt: new Date('2026-07-02'),
@@ -551,5 +580,51 @@ describe('claims routes', () => {
         text: expect.stringContaining(notification.message),
       })
     );
+  });
+
+  test('PATCH /api/claims/:claimId/status skips email when the student opted out', async () => {
+    mocks.authUser = { user_id: 'security-1', role: UserRole.security };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce(claimRow);
+
+    const rejectedClaim = {
+      ...claimRow,
+      status: ClaimStatus.rejected,
+      rejectionReason: 'Not enough ownership details.',
+    };
+
+    const tx = {
+      claim: {
+        update: vi.fn().mockResolvedValue(rejectedClaim),
+      },
+      notification: {
+        create: vi.fn().mockResolvedValue({
+          notificationId: '550e8400-e29b-41d4-a716-446655440092',
+          type: 'claim_status_update',
+          title: 'Claim status updated: rejected',
+          message:
+            'Your claim for "iPhone 15" is now rejected. Reason: Not enough ownership details.',
+        }),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({ logId: 'log-4' }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app)
+      .patch('/api/claims/550e8400-e29b-41d4-a716-446655440000/status')
+      .send({
+        status: 'rejected',
+        rejectionReason: 'Not enough ownership details.',
+      });
+
+    expect(res.status).toBe(200);
+    expect(sendNotificationEmail).not.toHaveBeenCalled();
+    expect(prisma.notification.update).not.toHaveBeenCalled();
   });
 });
