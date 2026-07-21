@@ -32,6 +32,13 @@ export const auditEvents = {
     ['changedFields'],
     ['changedFields']
   ),
+  user_notification_preferences_updated: event(
+    'users',
+    'user',
+    'required',
+    ['previous', 'updated'],
+    ['previous', 'updated']
+  ),
   claim_created: event('claims', 'claim', 'required', [
     'category',
     'campusId',
