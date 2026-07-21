@@ -576,6 +576,9 @@ async function notifySecurityOfClaimCancellation(
  *                 type: string
  *               itemName:
  *                 type: string
+ *               campusId:
+ *                 type: string
+ *                 format: uuid
  *               description:
  *                 type: string
  *               additionalInfo:
@@ -623,11 +626,25 @@ router.post(
         return;
       }
 
-      // Claims are campus-agnostic at submission time. Store them under the
-      // sentinel "missing" campus until campus selection is modeled explicitly.
-      const campusId = MISSING_CAMPUS_ID;
-
       const payload = req.body as CreateClaimInput;
+      // If the claim form provides a campus, honor it. Otherwise store the
+      // claim under the sentinel "missing" campus until the student chooses one.
+      const campusId = payload.campusId ?? MISSING_CAMPUS_ID;
+
+      if (payload.campusId) {
+        const campus = await prisma.campus.findUnique({
+          where: { campusId: payload.campusId },
+          select: { campusId: true },
+        });
+
+        if (!campus) {
+          res.status(404).json({
+            code: 'CAMPUS_NOT_FOUND',
+            message: 'Campus not found.',
+          });
+          return;
+        }
+      }
 
       const { claim, notification } = await prisma.$transaction(async (tx) => {
         const created = await tx.claim.create({

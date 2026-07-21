@@ -37,6 +37,7 @@ vi.mock('../src/db', () => ({
     },
     campus: {
       findFirst: vi.fn(),
+      findUnique: vi.fn(),
     },
     auditLog: {
       create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
@@ -383,6 +384,50 @@ describe('claims routes', () => {
       where: {
         role: { in: [UserRole.security, UserRole.admin] },
         campusId: MISSING_CAMPUS_ID,
+        isActive: true,
+      },
+      select: { userId: true },
+    });
+  });
+
+  test('POST /api/claims uses the selected campus when campusId is provided', async () => {
+    const selectedCampusId = '550e8400-e29b-41d4-a716-446655440042';
+
+    mocks.authUser = { user_id: 'student-1', role: UserRole.student };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
+    vi.mocked(prisma.campus.findUnique).mockResolvedValueOnce({
+      campusId: selectedCampusId,
+    });
+
+    const tx = createClaimTx([{ userId: 'security-1' }]);
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/claims').send({
+      campusId: selectedCampusId,
+      category: 'Electronics',
+      description: 'Lost my iPhone',
+    });
+
+    expect(res.status).toBe(201);
+    expect(prisma.campus.findUnique).toHaveBeenCalledWith({
+      where: { campusId: selectedCampusId },
+      select: { campusId: true },
+    });
+    expect(tx.claim.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          campusId: selectedCampusId,
+        }),
+      })
+    );
+    expect(tx.user.findMany).toHaveBeenCalledWith({
+      where: {
+        role: { in: [UserRole.security, UserRole.admin] },
+        campusId: selectedCampusId,
         isActive: true,
       },
       select: { userId: true },
