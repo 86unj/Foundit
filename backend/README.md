@@ -304,6 +304,8 @@ finder). The unread-count "stats" endpoint from the original plan was folded int
 
 ### Audit Logs
 
+Backend mutations and authentication outcomes use the append-only semantic audit contract documented in [`docs/audit-events.md`](docs/audit-events.md). Request events carry a server-generated correlation ID; scheduled jobs carry a per-run ID. Required audit rows commit with their database mutation, while denials and external delivery/authorization outcomes use sanitized best-effort persistence.
+
 | Method | Path                     | Auth           | Status  | Description                   |
 | ------ | ------------------------ | -------------- | ------- | ----------------------------- |
 | GET    | `/api/audit-logs`        | security/admin | Planned | Query audit logs with filters |

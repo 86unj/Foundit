@@ -32,6 +32,20 @@ vi.mock('../src/utils/imageUrl', () => ({
 
 vi.mock('../src/utils/auditLog', () => ({
   writeAuditLog: vi.fn(),
+  writeAuditLogs: vi.fn(),
+  writeAuditLogBestEffort: vi.fn(),
+  auditContextFromRequest: vi.fn(() => ({
+    requestId: '11111111-1111-4111-8111-111111111111',
+    ipAddress: '127.0.0.1',
+  })),
+}));
+
+vi.mock('../src/lib/matching/ingest', () => ({
+  scheduleItemSearchIndexIngest: vi.fn(),
+}));
+
+vi.mock('../src/lib/matching/suggestions', () => ({
+  scheduleMatchRefreshForCampus: vi.fn(),
 }));
 
 vi.mock('../src/db', () => ({
@@ -52,6 +66,11 @@ vi.mock('../src/db', () => ({
 }));
 
 import { prisma } from '../src/db';
+import {
+  writeAuditLog,
+  writeAuditLogs,
+  writeAuditLogBestEffort,
+} from '../src/utils/auditLog';
 
 function createTestApp() {
   const app = express();
@@ -206,5 +225,166 @@ describe('items routes', () => {
     expect(res.body.title).toBe('iPhone');
     expect(res.body.campusName).toBe('Newnham');
     expect(res.body.registeredBy.userId).toBe('security-1');
+  });
+
+  test('POST /api/items creates the item and required audit in one transaction', async () => {
+    vi.mocked(prisma.campus.findUnique).mockResolvedValueOnce({
+      campusId,
+      retentionDays: 30,
+    });
+    const tx = {
+      item: { create: vi.fn().mockResolvedValue({ itemId }) },
+      itemImage: { createMany: vi.fn() },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (callback) =>
+      callback(tx as never)
+    );
+    vi.mocked(prisma.item.findUnique).mockResolvedValueOnce(itemDetailRow);
+
+    const res = await request(createTestApp()).post('/api/items').send({
+      campusId,
+      title: 'iPhone',
+      description: 'Black iPhone',
+      category: 'Electronics',
+      locationFound: 'Library',
+      dateFound: '2026-07-01',
+      images: [],
+    });
+
+    expect(res.status).toBe(201);
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'security-1',
+        action: 'item_created',
+        entityId: itemId,
+        outcome: 'success',
+        requestId: '11111111-1111-4111-8111-111111111111',
+        details: expect.objectContaining({ imageCount: 0 }),
+      }),
+      tx
+    );
+  });
+
+  test('PATCH /api/items/:itemId audits only changed field names', async () => {
+    vi.mocked(prisma.item.findUnique).mockResolvedValueOnce({
+      itemId,
+      campusId,
+      dateFound: new Date('2026-07-01'),
+    });
+    vi.mocked(prisma.campus.findUnique).mockResolvedValueOnce({
+      retentionDays: 30,
+    });
+    const tx = {
+      item: { update: vi.fn().mockResolvedValue(itemDetailRow) },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (callback) =>
+      callback(tx as never)
+    );
+
+    const res = await request(createTestApp())
+      .patch(`/api/items/${itemId}`)
+      .send({
+        title: 'Updated iPhone',
+        category: 'Electronics',
+        dateFound: '2026-07-01',
+        locationFound: 'Library',
+        descriptionInternal: 'Private description',
+      });
+
+    expect(res.status).toBe(200);
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'item_updated',
+        entityId: itemId,
+        details: {
+          changedFields: [
+            'title',
+            'category',
+            'dateFound',
+            'locationFound',
+            'descriptionInternal',
+          ],
+        },
+      }),
+      tx
+    );
+    expect(JSON.stringify(vi.mocked(writeAuditLog).mock.calls)).not.toContain(
+      'Private description'
+    );
+  });
+
+  test('PATCH /api/items/:itemId/status audits item and affected claims together', async () => {
+    vi.mocked(prisma.item.findUnique).mockResolvedValueOnce({
+      itemId,
+      status: ItemStatus.stored,
+      retentionExpiryDate: new Date('2026-07-31'),
+    });
+    const tx = {
+      claim: {
+        findFirst: vi.fn().mockResolvedValue(null),
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            {
+              claimId: '550e8400-e29b-41d4-a716-446655440099',
+              status: 'submitted',
+            },
+          ]),
+        updateMany: vi.fn(),
+      },
+      item: {
+        update: vi.fn().mockResolvedValue({
+          ...itemDetailRow,
+          status: ItemStatus.expired,
+        }),
+      },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (callback) =>
+      callback(tx as never)
+    );
+
+    const res = await request(createTestApp())
+      .patch(`/api/items/${itemId}/status`)
+      .send({ status: 'expired' });
+
+    expect(res.status).toBe(200);
+    expect(writeAuditLogs).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'item_status_updated',
+          entityId: itemId,
+          requestId: '11111111-1111-4111-8111-111111111111',
+        }),
+        expect.objectContaining({
+          action: 'claim_status_updated',
+          entityId: '550e8400-e29b-41d4-a716-446655440099',
+          requestId: '11111111-1111-4111-8111-111111111111',
+        }),
+      ]),
+      tx
+    );
+  });
+
+  test('PATCH /api/items/:itemId/status audits invalid transitions without mutation', async () => {
+    vi.mocked(prisma.item.findUnique).mockResolvedValueOnce({
+      itemId,
+      status: ItemStatus.claimed,
+      retentionExpiryDate: new Date('2026-07-31'),
+    });
+
+    const res = await request(createTestApp())
+      .patch(`/api/items/${itemId}/status`)
+      .send({ status: 'disposed' });
+
+    expect(res.status).toBe(409);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'item_status_denied',
+        entityId: itemId,
+        outcome: 'denied',
+        reasonCode: 'invalid_status_transition',
+      })
+    );
   });
 });

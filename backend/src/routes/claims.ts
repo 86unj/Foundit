@@ -10,7 +10,11 @@ import {
 import { prisma } from '../db';
 import authenticate from '../middleware/authenticate';
 import requireRole from '../middleware/requireRole';
-import { writeAuditLog } from '../utils/auditLog';
+import {
+  auditContextFromRequest,
+  writeAuditLog,
+  writeAuditLogBestEffort,
+} from '../utils/auditLog';
 import {
   createClaimStatusUpdateInput,
   fanOutToCampusSecurity,
@@ -506,9 +510,15 @@ async function reserveItemForClaim(
 
 async function applyMatchConfirmation(
   tx: Prisma.TransactionClient,
-  claim: { claimId: string; studentId: string },
+  claim: {
+    claimId: string;
+    studentId: string;
+    status?: ClaimStatus;
+    itemId?: string | null;
+  },
   itemId: string,
-  actorId: string
+  actorId: string,
+  context: { requestId: string; ipAddress?: string }
 ) {
   await reserveItemForClaim(tx, itemId);
 
@@ -537,6 +547,74 @@ async function applyMatchConfirmation(
     select: studentNotificationEmailSelect,
   });
 
+  await Promise.all([
+    writeAuditLog(
+      {
+        actorId,
+        actorType: 'user',
+        action: 'claim_item_linked',
+        entityType: 'claim',
+        entityId: claim.claimId,
+        outcome: 'success',
+        details: {
+          previousItemId: claim.itemId ?? null,
+          nextItemId: itemId,
+        },
+        ...context,
+      },
+      tx
+    ),
+    writeAuditLog(
+      {
+        actorId,
+        actorType: 'user',
+        action: 'claim_status_updated',
+        entityType: 'claim',
+        entityId: claim.claimId,
+        outcome: 'success',
+        details: {
+          previousStatus: claim.status ?? ClaimStatus.under_review,
+          nextStatus: ClaimStatus.approved,
+          itemId,
+        },
+        ...context,
+      },
+      tx
+    ),
+    writeAuditLog(
+      {
+        actorId,
+        actorType: 'user',
+        action: 'item_status_updated',
+        entityType: 'item',
+        entityId: itemId,
+        outcome: 'success',
+        details: {
+          previousStatus: ItemStatus.stored,
+          nextStatus: ItemStatus.claimed,
+          claimId: claim.claimId,
+        },
+        ...context,
+      },
+      tx
+    ),
+    ...[matchNotification, statusNotification].map((notification) =>
+      writeAuditLog(
+        {
+          actorId,
+          actorType: 'user',
+          action: 'notification_created',
+          entityType: 'notification',
+          entityId: notification.notificationId,
+          outcome: 'success',
+          details: { claimId: claim.claimId },
+          ...context,
+        },
+        tx
+      )
+    ),
+  ]);
+
   return { claim: updatedClaim, matchNotification, statusNotification };
 }
 
@@ -547,38 +625,6 @@ function createClaimStatusNotificationInput(
   return createClaimStatusUpdateInput(claim, nextStatus.replace('_', ' '), {
     reason:
       nextStatus === ClaimStatus.rejected ? claim.rejectionReason : undefined,
-  });
-}
-
-async function notifySecurityOfNewClaim(
-  tx: Prisma.TransactionClient,
-  claim: { claimId: string; campusId: string }
-) {
-  await fanOutToCampusSecurity(tx, claim.campusId, {
-    type: NotificationType.claim_status_update,
-    title: 'New Claim Submitted',
-    message: 'A claim was submitted by a student.',
-    referenceType: 'claim',
-    referenceId: claim.claimId,
-  });
-}
-
-async function notifySecurityOfClaimCancellation(
-  tx: Prisma.TransactionClient,
-  claim: { claimId: string; campusId: string; itemName: string | null }
-) {
-  // The claim row is deleted right after this runs, so the message carries
-  // the item name — referenceId is kept only for traceability.
-  const claimLabel = claim.itemName
-    ? `their claim for "${claim.itemName}"`
-    : `claim ${shortClaimRef(claim.claimId)}`;
-
-  await fanOutToCampusSecurity(tx, claim.campusId, {
-    type: NotificationType.claim_status_update,
-    title: 'Claim Cancelled',
-    message: `A student cancelled ${claimLabel}.`,
-    referenceType: 'claim',
-    referenceId: claim.claimId,
   });
 }
 
@@ -672,6 +718,8 @@ router.post(
         }
       }
 
+      const auditContext = auditContextFromRequest(req);
+
       const { claim, notification } = await prisma.$transaction(async (tx) => {
         const created = await tx.claim.create({
           data: {
@@ -702,10 +750,18 @@ router.post(
           });
         }
 
-        await notifySecurityOfNewClaim(tx, {
-          claimId: created.claimId,
+        await fanOutToCampusSecurity(
+          tx,
           campusId,
-        });
+          {
+            type: NotificationType.claim_status_update,
+            title: 'New Claim Submitted',
+            message: 'A claim was submitted by a student.',
+            referenceType: 'claim',
+            referenceId: created.claimId,
+          },
+          { actorId: actor.userId, actorType: 'user', ...auditContext }
+        );
 
         const nextClaim = await tx.claim.findUniqueOrThrow({
           where: { claimId: created.claimId },
@@ -717,25 +773,47 @@ router.post(
           select: studentNotificationEmailSelect,
         });
 
-        return { claim: nextClaim, notification: studentNotification };
-      });
+        await Promise.all([
+          writeAuditLog(
+            {
+              actorId: actor.userId,
+              actorType: 'user',
+              action: 'claim_created',
+              entityType: 'claim',
+              entityId: nextClaim.claimId,
+              outcome: 'success',
+              details: {
+                category: nextClaim.category,
+                campusId: nextClaim.campusId,
+                status: nextClaim.status,
+                imageCount: payload.images.length,
+              },
+              ...auditContext,
+            },
+            tx
+          ),
+          writeAuditLog(
+            {
+              actorId: actor.userId,
+              actorType: 'user',
+              action: 'notification_created',
+              entityType: 'notification',
+              entityId: studentNotification.notificationId,
+              outcome: 'success',
+              details: { claimId: nextClaim.claimId },
+              ...auditContext,
+            },
+            tx
+          ),
+        ]);
 
-      await writeAuditLog({
-        actorId: actor.userId,
-        action: 'claim_created',
-        entityType: 'claim',
-        entityId: claim.claimId,
-        details: {
-          category: claim.category,
-          campusId: claim.campusId,
-          status: claim.status,
-        },
-        ipAddress: req.ip,
+        return { claim: nextClaim, notification: studentNotification };
       });
 
       await deliverStudentClaimEmail(notification, claim, {
         actorId: actor.userId,
         ipAddress: req.ip,
+        requestId: auditContext.requestId,
         event: 'claim_created',
       });
 
@@ -973,6 +1051,16 @@ router.delete(
       }
 
       if (claim.studentId !== actor.userId) {
+        await writeAuditLogBestEffort({
+          actorId: actor.userId,
+          actorType: 'user',
+          action: 'claim_transition_denied',
+          entityType: 'claim',
+          entityId: claim.claimId,
+          outcome: 'denied',
+          reasonCode: 'claim_ownership_mismatch',
+          ...auditContextFromRequest(req),
+        });
         res.status(403).json({
           code: 'FORBIDDEN',
           message: 'Insufficient permissions',
@@ -981,6 +1069,18 @@ router.delete(
       }
 
       if (!cancellableClaimStatuses.has(claim.status)) {
+        const context = auditContextFromRequest(req);
+        await writeAuditLogBestEffort({
+          actorId: actor.userId,
+          actorType: 'user',
+          action: 'claim_transition_denied',
+          entityType: 'claim',
+          entityId: claim.claimId,
+          outcome: 'denied',
+          reasonCode: 'claim_not_cancellable',
+          details: { currentStatus: claim.status },
+          ...context,
+        });
         res.status(409).json({
           code: 'CLAIM_NOT_CANCELLABLE',
           message: 'Only submitted claims can be deleted.',
@@ -988,25 +1088,39 @@ router.delete(
         return;
       }
 
+      const deleteContext = auditContextFromRequest(req);
       await prisma.$transaction(async (tx) => {
-        await notifySecurityOfClaimCancellation(tx, claim);
+        await fanOutToCampusSecurity(
+          tx,
+          claim.campusId,
+          {
+            type: NotificationType.claim_status_update,
+            title: 'Claim Cancelled',
+            message: `A student cancelled ${claim.itemName ? `their claim for "${claim.itemName}"` : `claim ${shortClaimRef(claim.claimId)}`}.`,
+            referenceType: 'claim',
+            referenceId: claim.claimId,
+          },
+          { actorId: actor.userId, actorType: 'user', ...deleteContext }
+        );
         await tx.matchSuggestion.deleteMany({
           where: { claimId: claim.claimId },
         });
         await tx.claim.delete({
           where: { claimId: claim.claimId },
         });
-      });
-
-      await writeAuditLog({
-        actorId: actor.userId,
-        action: 'claim_deleted',
-        entityType: 'claim',
-        entityId: claim.claimId,
-        details: {
-          previousStatus: claim.status,
-        },
-        ipAddress: req.ip,
+        await writeAuditLog(
+          {
+            actorId: actor.userId,
+            actorType: 'user',
+            action: 'claim_deleted',
+            entityType: 'claim',
+            entityId: claim.claimId,
+            outcome: 'success',
+            details: { previousStatus: claim.status },
+            ...deleteContext,
+          },
+          tx
+        );
       });
 
       res.status(200).json({ deleted: true, claimId: claim.claimId });
@@ -1112,6 +1226,18 @@ router.patch(
       }
 
       if (item.status !== ItemStatus.stored) {
+        const context = auditContextFromRequest(req);
+        await writeAuditLogBestEffort({
+          actorId: actor.userId,
+          actorType: 'user',
+          action: 'claim_transition_denied',
+          entityType: 'claim',
+          entityId: claim.claimId,
+          outcome: 'denied',
+          reasonCode: 'item_not_stored',
+          details: { itemId: item.itemId, itemStatus: item.status },
+          ...context,
+        });
         res.status(409).json({
           code: 'ITEM_NOT_STORED',
           message: 'Only stored items can be linked to a claim.',
@@ -1119,35 +1245,32 @@ router.patch(
         return;
       }
 
+      const linkContext = auditContextFromRequest(req);
       const {
         claim: updated,
         matchNotification,
         statusNotification,
       } = await prisma.$transaction(async (tx) =>
-        applyMatchConfirmation(tx, claim, item.itemId, actor.userId)
+        applyMatchConfirmation(
+          tx,
+          claim,
+          item.itemId,
+          actor.userId,
+          linkContext
+        )
       );
-
-      await writeAuditLog({
-        actorId: actor.userId,
-        action: 'claim_item_linked',
-        entityType: 'claim',
-        entityId: claim.claimId,
-        details: {
-          previousItemId: claim.itemId,
-          nextItemId: item.itemId,
-        },
-        ipAddress: req.ip,
-      });
 
       await Promise.all([
         deliverStudentClaimEmail(matchNotification, updated, {
           actorId: actor.userId,
           ipAddress: req.ip,
+          requestId: linkContext.requestId,
           event: 'match_confirmed',
         }),
         deliverStudentClaimEmail(statusNotification, updated, {
           actorId: actor.userId,
           ipAddress: req.ip,
+          requestId: linkContext.requestId,
           event: 'claim_status_approved',
         }),
       ]);
@@ -1237,6 +1360,21 @@ router.patch(
       };
 
       if (!validStatusTransitions[claim.status].includes(status)) {
+        const context = auditContextFromRequest(req);
+        await writeAuditLogBestEffort({
+          actorId: actor.userId,
+          actorType: 'user',
+          action: 'claim_transition_denied',
+          entityType: 'claim',
+          entityId: claim.claimId,
+          outcome: 'denied',
+          reasonCode: 'invalid_status_transition',
+          details: {
+            previousStatus: claim.status,
+            requestedStatus: status,
+          },
+          ...context,
+        });
         res.status(409).json({
           code: 'INVALID_STATUS_TRANSITION',
           message: `Cannot change claim status from ${claim.status} to ${status}.`,
@@ -1263,10 +1401,13 @@ router.patch(
         return;
       }
 
+      const statusContext = auditContextFromRequest(req);
       const { claim: updated, notification } = await prisma.$transaction(
         async (tx) => {
+          let itemTransitioned = false;
           if (status === ClaimStatus.approved && claim.itemId) {
             await reserveItemForClaim(tx, claim.itemId);
+            itemTransitioned = true;
           }
 
           if (status === ClaimStatus.picked_up && claim.itemId) {
@@ -1284,6 +1425,7 @@ router.patch(
                 where: { itemId: item.itemId },
                 data: { status: ItemStatus.claimed },
               });
+              itemTransitioned = true;
             }
           }
 
@@ -1313,39 +1455,68 @@ router.patch(
           await writeAuditLog(
             {
               actorId: actor.userId,
+              actorType: 'user',
               action: 'claim_notification_sent',
               entityType: 'notification',
               entityId: notification.notificationId,
+              outcome: 'success',
               details: {
                 claimId: nextClaim.claimId,
                 recipientId: nextClaim.studentId,
                 claimStatus: status,
               },
-              ipAddress: req.ip,
+              ...statusContext,
             },
             tx
           );
+
+          await writeAuditLog(
+            {
+              actorId: actor.userId,
+              actorType: 'user',
+              action: 'claim_status_updated',
+              entityType: 'claim',
+              entityId: claim.claimId,
+              outcome: 'success',
+              details: {
+                previousStatus: claim.status,
+                nextStatus: status,
+                reasonCategory:
+                  status === ClaimStatus.rejected ? 'manual_rejection' : null,
+              },
+              ...statusContext,
+            },
+            tx
+          );
+
+          if (itemTransitioned && claim.itemId) {
+            await writeAuditLog(
+              {
+                actorId: actor.userId,
+                actorType: 'user',
+                action: 'item_status_updated',
+                entityType: 'item',
+                entityId: claim.itemId,
+                outcome: 'success',
+                details: {
+                  previousStatus: ItemStatus.stored,
+                  nextStatus: ItemStatus.claimed,
+                  claimId: claim.claimId,
+                },
+                ...statusContext,
+              },
+              tx
+            );
+          }
 
           return { claim: nextClaim, notification };
         }
       );
 
-      await writeAuditLog({
-        actorId: actor.userId,
-        action: 'claim_status_updated',
-        entityType: 'claim',
-        entityId: claim.claimId,
-        details: {
-          previousStatus: claim.status,
-          nextStatus: status,
-          rejectionReason: rejectionReason ?? null,
-        },
-        ipAddress: req.ip,
-      });
-
       await deliverStudentClaimEmail(notification, updated, {
         actorId: actor.userId,
         ipAddress: req.ip,
+        requestId: statusContext.requestId,
         event: `claim_status_${status}`,
       });
 
@@ -1497,19 +1668,11 @@ router.post(
         return;
       }
 
-      const { candidateCount, suggestionCount } =
-        await refreshClaimMatchSuggestions(claim.claimId);
-
-      await writeAuditLog({
+      const generationContext = auditContextFromRequest(req);
+      await refreshClaimMatchSuggestions(claim.claimId, {
         actorId: actor.userId,
-        action: 'claim_match_suggestions_generated',
-        entityType: 'claim',
-        entityId: claim.claimId,
-        details: {
-          candidateCount,
-          suggestionCount,
-        },
-        ipAddress: req.ip,
+        actorType: 'user',
+        ...generationContext,
       });
 
       const matches = await prisma.matchSuggestion.findMany({
@@ -1623,6 +1786,7 @@ router.patch(
       }
 
       const { status } = req.body as { status: MatchStatus };
+      const matchContext = auditContextFromRequest(req);
 
       const { updated, confirmedMatchEmail } = await prisma.$transaction(
         async (tx) => {
@@ -1652,7 +1816,8 @@ router.patch(
               tx,
               { claimId: match.claimId, studentId: claim.studentId },
               match.itemId,
-              actor.userId
+              actor.userId,
+              matchContext
             );
           }
 
@@ -1679,25 +1844,30 @@ router.patch(
             select: matchSuggestionSelect,
           });
 
+          await writeAuditLog(
+            {
+              actorId: actor.userId,
+              actorType: 'user',
+              action: 'claim_match_suggestion_reviewed',
+              entityType: 'match_suggestion',
+              entityId: match.matchId,
+              outcome: 'success',
+              details: {
+                claimId: match.claimId,
+                previousStatus: match.status,
+                nextStatus: status,
+              },
+              ...matchContext,
+            },
+            tx
+          );
+
           return {
             updated: updatedSuggestion,
             confirmedMatchEmail: matchEmail,
           };
         }
       );
-
-      await writeAuditLog({
-        actorId: actor.userId,
-        action: 'claim_match_suggestion_reviewed',
-        entityType: 'match_suggestion',
-        entityId: match.matchId,
-        details: {
-          claimId: match.claimId,
-          previousStatus: match.status,
-          nextStatus: status,
-        },
-        ipAddress: req.ip,
-      });
 
       if (confirmedMatchEmail) {
         await Promise.all([
@@ -1707,6 +1877,7 @@ router.patch(
             {
               actorId: actor.userId,
               ipAddress: req.ip,
+              requestId: matchContext.requestId,
               event: 'match_confirmed',
             }
           ),
@@ -1716,6 +1887,7 @@ router.patch(
             {
               actorId: actor.userId,
               ipAddress: req.ip,
+              requestId: matchContext.requestId,
               event: 'claim_status_approved',
             }
           ),

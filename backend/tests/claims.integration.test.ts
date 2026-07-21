@@ -2,7 +2,7 @@ import express from 'express';
 import request from 'supertest';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import claimsRouter from '../src/routes/claims';
-import { UserRole, ClaimStatus } from '@prisma/client';
+import { UserRole, ClaimStatus, ItemStatus } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({
   authUser: { user_id: 'student-1' } as {
@@ -303,6 +303,9 @@ describe('claims routes', () => {
           message: 'Your claim #550E8400 has been submitted.',
         }),
       },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
+      },
     };
   }
 
@@ -388,6 +391,26 @@ describe('claims routes', () => {
       },
       select: { userId: true },
     });
+    const auditRows = tx.auditLog.create.mock.calls.map(
+      ([input]) => input.data
+    );
+    expect(auditRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'notification_fanout_created',
+          entityId: null,
+          details: expect.objectContaining({
+            sourceEntityType: 'claim',
+            sourceEntityId: expect.any(String),
+          }),
+        }),
+        expect.objectContaining({ action: 'claim_created' }),
+        expect.objectContaining({ action: 'notification_created' }),
+      ])
+    );
+    const [requestId] = [...new Set(auditRows.map((row) => row.requestId))];
+    expect(requestId).toEqual(expect.any(String));
+    expect(auditRows.every((row) => row.requestId === requestId)).toBe(true);
   });
 
   test('POST /api/claims uses the selected campus when campusId is provided', async () => {
@@ -400,6 +423,18 @@ describe('claims routes', () => {
     });
 
     const tx = createClaimTx([{ userId: 'security-1' }]);
+    vi.mocked(tx.claim.findUniqueOrThrow).mockResolvedValueOnce({
+      ...claimRow,
+      campusId: selectedCampusId,
+      campus: {
+        ...claimRow.campus,
+        campusId: selectedCampusId,
+      },
+      student: {
+        ...claimRow.student,
+        emailNotificationOptIn: true,
+      },
+    });
     vi.mocked(prisma.$transaction).mockImplementationOnce(
       async (fn: (client: unknown) => unknown) => fn(tx)
     );
@@ -432,6 +467,41 @@ describe('claims routes', () => {
       },
       select: { userId: true },
     });
+    const auditRows = tx.auditLog.create.mock.calls.map(
+      ([input]) => input.data
+    );
+    const [requestId] = [...new Set(auditRows.map((row) => row.requestId))];
+    expect(requestId).toEqual(expect.any(String));
+    expect(auditRows.every((row) => row.requestId === requestId)).toBe(true);
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'claim_email_notification_sent',
+        requestId,
+      }),
+    });
+  });
+
+  test('POST /api/claims rejects an unknown selected campus before the transaction', async () => {
+    const selectedCampusId = '550e8400-e29b-41d4-a716-446655440043';
+
+    mocks.authUser = { user_id: 'student-1', role: UserRole.student };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeStudent);
+    vi.mocked(prisma.campus.findUnique).mockResolvedValueOnce(null);
+
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/claims').send({
+      campusId: selectedCampusId,
+      category: 'Electronics',
+      description: 'Lost my iPhone',
+    });
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({
+      code: 'CAMPUS_NOT_FOUND',
+      message: 'Campus not found.',
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   test('DELETE /api/claims/:claimId notifies same-campus security of the cancellation', async () => {
@@ -451,6 +521,9 @@ describe('claims routes', () => {
       },
       claim: {
         delete: vi.fn(),
+      },
+      auditLog: {
+        create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
       },
     };
     vi.mocked(prisma.$transaction).mockImplementationOnce(
@@ -564,6 +637,22 @@ describe('claims routes', () => {
         entityId: notification.notificationId,
       }),
     });
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'claim_status_updated',
+        actorId: 'security-1',
+        entityId: claimRow.claimId,
+        requestId: expect.any(String),
+        details: expect.objectContaining({
+          previousStatus: ClaimStatus.submitted,
+          nextStatus: ClaimStatus.rejected,
+          reasonCategory: 'manual_rejection',
+        }),
+      }),
+    });
+    expect(JSON.stringify(tx.auditLog.create.mock.calls)).not.toContain(
+      'Not enough ownership details.'
+    );
   });
 
   test('PATCH /api/claims/:claimId/status emails students when picked up', async () => {
@@ -625,6 +714,70 @@ describe('claims routes', () => {
         text: expect.stringContaining(notification.message),
       })
     );
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'item_status_updated',
+        actorId: 'security-1',
+        entityId: '550e8400-e29b-41d4-a716-446655440010',
+        details: expect.objectContaining({
+          previousStatus: ItemStatus.stored,
+          nextStatus: ItemStatus.claimed,
+          claimId: claimRow.claimId,
+        }),
+      }),
+    });
+  });
+
+  test('PATCH /api/claims/:claimId/status audits claim-driven item reservation', async () => {
+    mocks.authUser = { user_id: 'security-1', role: UserRole.security };
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce({
+      ...claimRow,
+      itemId: '550e8400-e29b-41d4-a716-446655440010',
+      status: ClaimStatus.under_review,
+    });
+    const approvedClaim = {
+      ...claimRow,
+      itemId: '550e8400-e29b-41d4-a716-446655440010',
+      status: ClaimStatus.approved,
+    };
+    const notification = {
+      notificationId: '550e8400-e29b-41d4-a716-446655440092',
+      type: 'claim_status_update',
+      title: 'Claim status updated: approved',
+      message: 'Your claim for "iPhone 15" is now approved.',
+    };
+    const tx = {
+      item: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      claim: { update: vi.fn().mockResolvedValue(approvedClaim) },
+      notification: { create: vi.fn().mockResolvedValue(notification) },
+      auditLog: { create: vi.fn().mockResolvedValue({ logId: 'log-4' }) },
+    };
+    vi.mocked(prisma.$transaction).mockImplementationOnce(async (callback) =>
+      callback(tx as never)
+    );
+
+    const res = await request(createTestApp())
+      .patch('/api/claims/550e8400-e29b-41d4-a716-446655440000/status')
+      .send({ status: 'approved' });
+
+    expect(res.status).toBe(200);
+    const auditRows = tx.auditLog.create.mock.calls.map(
+      ([input]) => input.data
+    );
+    expect(auditRows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: 'claim_status_updated',
+          entityId: claimRow.claimId,
+        }),
+        expect.objectContaining({
+          action: 'item_status_updated',
+          entityId: '550e8400-e29b-41d4-a716-446655440010',
+        }),
+      ])
+    );
+    expect(new Set(auditRows.map((row) => row.requestId)).size).toBe(1);
   });
 
   test('PATCH /api/claims/:claimId/status skips email when the student opted out', async () => {

@@ -28,6 +28,10 @@ vi.mock('../src/middleware/authenticate', () => ({
 
 vi.mock('../src/utils/auditLog', () => ({
   writeAuditLog: vi.fn(),
+  auditContextFromRequest: vi.fn(() => ({
+    requestId: '11111111-1111-4111-8111-111111111111',
+    ipAddress: '127.0.0.1',
+  })),
 }));
 
 vi.mock('../src/db', () => ({
@@ -81,6 +85,9 @@ describe('users routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authUser = { user_id: 'student-1', role: 'student' };
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) =>
+      (callback as (tx: typeof prisma) => Promise<unknown>)(prisma)
+    );
   });
 
   test('GET /api/users/me returns 401 if user is not authenticated', async () => {
@@ -175,7 +182,8 @@ describe('users routes', () => {
         action: 'user_profile_updated',
         entityType: 'user',
         entityId: 'student-1',
-      })
+      }),
+      prisma
     );
   });
 

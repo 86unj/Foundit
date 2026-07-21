@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
+import type { RateLimitInfo } from 'express-rate-limit';
 import { TokenExpiredError } from 'jsonwebtoken';
 import { prisma } from '../db';
 import { validate } from '../validators/shared';
@@ -18,7 +19,11 @@ import {
   hashTokenForStorage,
   verifyRefreshToken,
 } from '../utils/token';
-import { writeAuditLog } from '../utils/auditLog';
+import {
+  auditContextFromRequest,
+  writeAuditLog,
+  writeAuditLogBestEffort,
+} from '../utils/auditLog';
 import {
   generateVerifyToken,
   getVerifyTokenExpiry,
@@ -26,7 +31,7 @@ import {
 import { sendVerificationEmail } from '../lib/email';
 
 // Limits login attempts to 10 per IP per 15 minutes to slow down brute-force attacks.
-const loginRateLimiter = rateLimit({
+export const loginRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   standardHeaders: true,
@@ -35,9 +40,50 @@ const loginRateLimiter = rateLimit({
     code: 'RATE_LIMITED',
     message: 'Too many login attempts. Try again in 15 minutes.',
   },
+  handler: async (req, res, _next, options) => {
+    const rateLimitInfo = (req as typeof req & { rateLimit?: RateLimitInfo })
+      .rateLimit;
+    if (!rateLimitInfo || rateLimitInfo.used === rateLimitInfo.limit + 1) {
+      await auditAuthDenied(req, 'user_login_denied', 'rate_limited');
+    }
+    res.status(options.statusCode).send(options.message);
+  },
 });
 
 const router = Router();
+
+async function auditAuthDenied(
+  req: Parameters<typeof auditContextFromRequest>[0],
+  action:
+    | 'user_login_denied'
+    | 'email_verification_denied'
+    | 'refresh_token_denied',
+  reasonCode: string,
+  entityId: string | null = null
+): Promise<void> {
+  const context = auditContextFromRequest(req);
+  await writeAuditLogBestEffort({
+    actorType: 'anonymous',
+    action,
+    entityType: 'user',
+    entityId,
+    outcome: 'denied',
+    reasonCode,
+    ...context,
+  });
+}
+
+function getRefreshDenialReason(
+  log: { revoked: boolean; expiresAt: Date; userId: string } | null,
+  payloadUserId: string,
+  now: Date
+) {
+  if (!log) return 'missing_log';
+  if (log.revoked) return 'revoked_token';
+  if (log.expiresAt < now) return 'expired_log';
+  if (log.userId !== payloadUserId) return 'subject_mismatch';
+  return null;
+}
 
 /**
  * @openapi
@@ -113,6 +159,7 @@ router.post(
         where: { email: email.toLowerCase() },
       });
       if (!user) {
+        await auditAuthDenied(req, 'user_login_denied', 'unknown_email');
         res.status(401).json({
           code: 'INVALID_CREDENTIALS',
           message: 'Email or password is incorrect.',
@@ -122,6 +169,12 @@ router.post(
 
       // Check is_active before bcrypt to avoid unnecessary hashing work
       if (!user.isActive) {
+        await auditAuthDenied(
+          req,
+          'user_login_denied',
+          'account_inactive',
+          user.userId
+        );
         res.status(403).json({
           code: 'ACCOUNT_INACTIVE',
           message:
@@ -132,6 +185,12 @@ router.post(
 
       const passwordMatch = await comparePassword(password, user.passwordHash);
       if (!passwordMatch) {
+        await auditAuthDenied(
+          req,
+          'user_login_denied',
+          'wrong_password',
+          user.userId
+        );
         res.status(401).json({
           code: 'INVALID_CREDENTIALS',
           message: 'Email or password is incorrect.',
@@ -139,6 +198,12 @@ router.post(
         return;
       }
       if (!user.isEmailVerified) {
+        await auditAuthDenied(
+          req,
+          'user_login_denied',
+          'email_not_verified',
+          user.userId
+        );
         res.status(403).json({
           code: 'EMAIL_NOT_VERIFIED',
           message: 'Please verify your email before logging in.',
@@ -158,20 +223,27 @@ router.post(
       const refreshDays =
         parseInt(process.env.JWT_REFRESH_EXPIRES_DAYS ?? '7') || 7;
 
-      await prisma.refreshTokenLog.create({
-        data: {
-          userId: user.userId,
-          tokenHash,
-          expiresAt: new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000),
-        },
-      });
-
-      await writeAuditLog({
-        actorId: user.userId,
-        action: 'user_login',
-        entityType: 'user',
-        entityId: user.userId,
-        ipAddress: req.ip,
+      const context = auditContextFromRequest(req);
+      await prisma.$transaction(async (tx) => {
+        await tx.refreshTokenLog.create({
+          data: {
+            userId: user.userId,
+            tokenHash,
+            expiresAt: new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000),
+          },
+        });
+        await writeAuditLog(
+          {
+            actorId: user.userId,
+            actorType: 'user',
+            action: 'user_login',
+            entityType: 'user',
+            entityId: user.userId,
+            outcome: 'success',
+            ...context,
+          },
+          tx
+        );
       });
 
       res.status(200).json({
@@ -291,23 +363,38 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
     const verifyTokenHash = hashTokenForStorage(verifyToken);
     let user;
     try {
-      user = await prisma.user.create({
-        data: {
-          email: normalizedEmail,
-          passwordHash,
-          username,
-          role,
-          firstName: data.firstName,
-          lastName: data.lastName,
-          // campusId is optional at registration — null until assigned by an admin
-          campus: data.campusId
-            ? { connect: { campusId: data.campusId } }
-            : undefined,
-          phone: data.phone,
-          emailVerifyToken: verifyTokenHash,
-          emailVerifyTokenExpiresAt: getVerifyTokenExpiry(),
-          isEmailVerified: false,
-        },
+      const context = auditContextFromRequest(req);
+      user = await prisma.$transaction(async (tx) => {
+        const created = await tx.user.create({
+          data: {
+            email: normalizedEmail,
+            passwordHash,
+            username,
+            role,
+            firstName: data.firstName,
+            lastName: data.lastName,
+            // campusId is optional at registration — null until assigned by an admin
+            campus: data.campusId
+              ? { connect: { campusId: data.campusId } }
+              : undefined,
+            phone: data.phone,
+            emailVerifyToken: verifyTokenHash,
+            emailVerifyTokenExpiresAt: getVerifyTokenExpiry(),
+            isEmailVerified: false,
+          },
+        });
+        await writeAuditLog(
+          {
+            actorType: 'anonymous',
+            action: 'user_registered',
+            entityType: 'user',
+            entityId: created.userId,
+            outcome: 'success',
+            ...context,
+          },
+          tx
+        );
+        return created;
       });
     } catch (err: unknown) {
       if (
@@ -331,8 +418,21 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
     } catch (emailErr) {
       console.error('Failed to send verification email:', emailErr);
 
-      await prisma.user.delete({
-        where: { userId: user.userId },
+      const context = auditContextFromRequest(req);
+      await prisma.$transaction(async (tx) => {
+        await tx.user.delete({ where: { userId: user.userId } });
+        await writeAuditLog(
+          {
+            actorType: 'anonymous',
+            action: 'user_registration_rolled_back',
+            entityType: 'user',
+            entityId: user.userId,
+            outcome: 'failure',
+            reasonCode: 'email_delivery_failed',
+            ...context,
+          },
+          tx
+        );
       });
 
       res.status(500).json({
@@ -341,14 +441,6 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
       });
       return;
     }
-
-    await writeAuditLog({
-      actorId: user.userId,
-      action: 'user_registered',
-      entityType: 'user',
-      entityId: user.userId,
-      ipAddress: req.ip,
-    });
 
     // Return user profile only — no tokens issued at registration.
     // The frontend must call POST /api/auth/login separately to obtain tokens.
@@ -391,6 +483,7 @@ router.get('/verify-email', async (req, res, next) => {
     const token = req.query.token as string;
 
     if (!token) {
+      await auditAuthDenied(req, 'email_verification_denied', 'missing_token');
       res.status(400).json({
         code: 'MISSING_TOKEN',
         message: 'Verification token is required.',
@@ -404,6 +497,7 @@ router.get('/verify-email', async (req, res, next) => {
     });
 
     if (!user) {
+      await auditAuthDenied(req, 'email_verification_denied', 'invalid_token');
       res.status(400).json({
         code: 'INVALID_TOKEN',
         message: 'Verification token is invalid.',
@@ -412,6 +506,12 @@ router.get('/verify-email', async (req, res, next) => {
     }
 
     if (user.emailVerifyTokenExpiresAt! < new Date()) {
+      await auditAuthDenied(
+        req,
+        'email_verification_denied',
+        'expired_token',
+        user.userId
+      );
       res.status(400).json({
         code: 'TOKEN_EXPIRED',
         message: 'Verification token has expired. Please register again.',
@@ -419,13 +519,27 @@ router.get('/verify-email', async (req, res, next) => {
       return;
     }
 
-    await prisma.user.update({
-      where: { userId: user.userId },
-      data: {
-        isEmailVerified: true,
-        emailVerifyToken: null,
-        emailVerifyTokenExpiresAt: null,
-      },
+    const verifyContext = auditContextFromRequest(req);
+    await prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { userId: user.userId },
+        data: {
+          isEmailVerified: true,
+          emailVerifyToken: null,
+          emailVerifyTokenExpiresAt: null,
+        },
+      });
+      await writeAuditLog(
+        {
+          actorType: 'anonymous',
+          action: 'email_verification_succeeded',
+          entityType: 'user',
+          entityId: user.userId,
+          outcome: 'success',
+          ...verifyContext,
+        },
+        tx
+      );
     });
 
     res.redirect(`${process.env.FRONTEND_URL}/email-verified`);
@@ -479,6 +593,7 @@ router.post('/refresh', validate(refreshSchema), async (req, res, next) => {
       payload = verifyRefreshToken(refreshToken);
     } catch (err) {
       if (err instanceof TokenExpiredError) {
+        await auditAuthDenied(req, 'refresh_token_denied', 'expired_token');
         res.status(401).json({
           code: 'REFRESH_TOKEN_EXPIRED',
           message: 'Refresh token has expired. Please log in again.',
@@ -486,6 +601,7 @@ router.post('/refresh', validate(refreshSchema), async (req, res, next) => {
         return;
       }
 
+      await auditAuthDenied(req, 'refresh_token_denied', 'invalid_token');
       res.status(401).json({
         code: 'INVALID_REFRESH_TOKEN',
         message: 'Refresh token is invalid.',
@@ -498,24 +614,37 @@ router.post('/refresh', validate(refreshSchema), async (req, res, next) => {
       where: { tokenHash },
     });
 
-    if (
-      !log ||
-      log.revoked ||
-      log.expiresAt < new Date() ||
-      log.userId !== payload.userId
-    ) {
+    const refreshDenialReason = getRefreshDenialReason(
+      log,
+      payload.userId,
+      new Date()
+    );
+    if (refreshDenialReason) {
+      await auditAuthDenied(
+        req,
+        'refresh_token_denied',
+        refreshDenialReason,
+        log?.userId ?? null
+      );
       res.status(401).json({
         code: 'INVALID_REFRESH_TOKEN',
         message: 'Refresh token is invalid or has been revoked.',
       });
       return;
     }
+    const verifiedLog = log!;
 
     const user = await prisma.user.findUnique({
       where: { userId: payload.userId },
     });
 
     if (!user || !user.isActive) {
+      await auditAuthDenied(
+        req,
+        'refresh_token_denied',
+        user ? 'account_inactive' : 'user_missing',
+        user?.userId ?? null
+      );
       res.status(401).json({
         code: 'INVALID_REFRESH_TOKEN',
         message: 'Refresh token is invalid or has been revoked.',
@@ -535,19 +664,32 @@ router.post('/refresh', validate(refreshSchema), async (req, res, next) => {
     const refreshDays =
       parseInt(process.env.JWT_REFRESH_EXPIRES_DAYS ?? '7') || 7;
 
-    await prisma.$transaction([
-      prisma.refreshTokenLog.update({
-        where: { logId: log.logId },
+    const refreshContext = auditContextFromRequest(req);
+    await prisma.$transaction(async (tx) => {
+      await tx.refreshTokenLog.update({
+        where: { logId: verifiedLog.logId },
         data: { revoked: true },
-      }),
-      prisma.refreshTokenLog.create({
+      });
+      await tx.refreshTokenLog.create({
         data: {
           userId: user.userId,
           tokenHash: newTokenHash,
           expiresAt: new Date(Date.now() + refreshDays * 24 * 60 * 60 * 1000),
         },
-      }),
-    ]);
+      });
+      await writeAuditLog(
+        {
+          actorId: user.userId,
+          actorType: 'user',
+          action: 'refresh_token_rotated',
+          entityType: 'user',
+          entityId: user.userId,
+          outcome: 'success',
+          ...refreshContext,
+        },
+        tx
+      );
+    });
 
     res.status(200).json({
       accessToken,

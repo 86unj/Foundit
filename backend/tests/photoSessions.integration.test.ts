@@ -65,6 +65,15 @@ vi.mock('../src/utils/imageUrl', () => ({
   resolveImageUrl: vi.fn(async (url: string) => `signed-${url}`),
 }));
 
+vi.mock('../src/utils/auditLog', () => ({
+  writeAuditLog: vi.fn(),
+  writeAuditLogBestEffort: vi.fn(),
+  auditContextFromRequest: vi.fn(() => ({
+    requestId: '11111111-1111-4111-8111-111111111111',
+    ipAddress: '127.0.0.1',
+  })),
+}));
+
 vi.mock('../src/db', () => ({
   prisma: {
     photoUploadSession: {
@@ -117,6 +126,9 @@ describe('photoSessions routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authUser = { user_id: 'security-1', role: 'security' };
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) =>
+      (callback as (tx: typeof prisma) => Promise<unknown>)(prisma)
+    );
   });
 
   test('POST /api/photo-sessions returns 401 if not authenticated', async () => {

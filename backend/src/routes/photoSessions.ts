@@ -16,6 +16,12 @@ import {
   photoSessionTokenParamsSchema,
   registerPhotoSessionImageSchema,
 } from '../validators/photoSessions';
+import {
+  auditContextFromRequest,
+  writeAuditLog,
+  writeAuditLogBestEffort,
+} from '../utils/auditLog';
+import { getUploadSizeCategory } from '../utils/uploadMetadata';
 
 const MAX_IMAGES_PER_SESSION = 3;
 
@@ -128,15 +134,32 @@ router.post(
       const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
 
       let token = generateReportLinkToken();
+      const context = auditContextFromRequest(req);
       for (let attempt = 0; attempt < 5; attempt++) {
         try {
-          const session = await prisma.photoUploadSession.create({
-            data: {
-              token,
-              createdBy: req.user!.user_id,
-              expiresAt,
-            },
-            select: sessionSelect,
+          const session = await prisma.$transaction(async (tx) => {
+            const created = await tx.photoUploadSession.create({
+              data: {
+                token,
+                createdBy: req.user!.user_id,
+                expiresAt,
+              },
+              select: sessionSelect,
+            });
+            await writeAuditLog(
+              {
+                actorId: req.user!.user_id,
+                actorType: 'user',
+                action: 'photo_session_created',
+                entityType: 'photo_session',
+                entityId: created.sessionId,
+                outcome: 'success',
+                details: { expiresAt: expiresAt.toISOString() },
+                ...context,
+              },
+              tx
+            );
+            return created;
           });
 
           res.status(201).json({
@@ -259,6 +282,19 @@ router.post(
             fileSizeKb,
             fileSizeBytes
           );
+          await writeAuditLogBestEffort({
+            actorType: 'anonymous',
+            action: 'photo_upload_authorized',
+            entityType: 'photo_session',
+            entityId: session.sessionId,
+            outcome: 'success',
+            details: {
+              imageId: placeholder.imageId,
+              contentType,
+              sizeCategory: getUploadSizeCategory(fileSizeKb),
+            },
+            ...auditContextFromRequest(req),
+          });
           res.status(200).json(result);
         } catch (err) {
           await prisma.photoSessionImage.delete({
@@ -345,6 +381,20 @@ router.post(
         return;
       }
 
+      await writeAuditLog({
+        actorType: 'anonymous',
+        action: 'photo_image_registered',
+        entityType: 'photo_session_image',
+        entityId: image.imageId,
+        outcome: 'success',
+        details: {
+          sessionId: session.sessionId,
+          fileType,
+          sizeCategory: getUploadSizeCategory(fileSizeKb),
+        },
+        ...auditContextFromRequest(req),
+      });
+
       res.status(201).json(image);
     } catch (err) {
       next(err);
@@ -396,6 +446,16 @@ router.get(
       }
 
       if (session.createdBy !== req.user!.user_id) {
+        await writeAuditLogBestEffort({
+          actorId: req.user!.user_id,
+          actorType: 'user',
+          action: 'photo_session_access_denied',
+          entityType: 'photo_session',
+          entityId: null,
+          outcome: 'denied',
+          reasonCode: 'session_ownership_mismatch',
+          ...auditContextFromRequest(req),
+        });
         res.status(403).json({
           code: 'FORBIDDEN',
           message: 'You do not have access to this photo session.',
@@ -456,6 +516,16 @@ router.delete(
       }
 
       if (session.createdBy !== req.user!.user_id) {
+        await writeAuditLogBestEffort({
+          actorId: req.user!.user_id,
+          actorType: 'user',
+          action: 'photo_image_access_denied',
+          entityType: 'photo_session_image',
+          entityId: imageId,
+          outcome: 'denied',
+          reasonCode: 'session_ownership_mismatch',
+          ...auditContextFromRequest(req),
+        });
         res.status(403).json({
           code: 'FORBIDDEN',
           message: 'You do not have access to this photo session.',
@@ -463,11 +533,27 @@ router.delete(
         return;
       }
 
-      const deleted = await prisma.photoSessionImage.deleteMany({
-        where: {
-          imageId,
-          sessionId: session.sessionId,
-        },
+      const deleteContext = auditContextFromRequest(req);
+      const deleted = await prisma.$transaction(async (tx) => {
+        const result = await tx.photoSessionImage.deleteMany({
+          where: { imageId, sessionId: session.sessionId },
+        });
+        if (result.count > 0) {
+          await writeAuditLog(
+            {
+              actorId: req.user!.user_id,
+              actorType: 'user',
+              action: 'photo_image_deleted',
+              entityType: 'photo_session_image',
+              entityId: imageId,
+              outcome: 'success',
+              details: { sessionId: session.sessionId },
+              ...deleteContext,
+            },
+            tx
+          );
+        }
+        return result;
       });
 
       if (deleted.count === 0) {

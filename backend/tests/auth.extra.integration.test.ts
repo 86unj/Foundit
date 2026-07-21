@@ -31,6 +31,11 @@ vi.mock('../src/utils/token', () => ({
 
 vi.mock('../src/utils/auditLog', () => ({
   writeAuditLog: vi.fn(),
+  writeAuditLogBestEffort: vi.fn(),
+  auditContextFromRequest: vi.fn(() => ({
+    requestId: '11111111-1111-4111-8111-111111111111',
+    ipAddress: '127.0.0.1',
+  })),
 }));
 
 vi.mock('../src/db', () => ({
@@ -65,6 +70,7 @@ import {
   signRefreshToken,
   verifyRefreshToken,
 } from '../src/utils/token';
+import { writeAuditLog, writeAuditLogBestEffort } from '../src/utils/auditLog';
 
 function createTestApp() {
   const app = express();
@@ -89,6 +95,9 @@ describe('auth extra routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.FRONTEND_URL = 'http://localhost:3000';
+    vi.mocked(prisma.$transaction).mockImplementation(async (callback) =>
+      (callback as (tx: typeof prisma) => Promise<unknown>)(prisma)
+    );
   });
 
   test('POST /api/auth/register returns 409 if email already exists', async () => {
@@ -139,6 +148,57 @@ describe('auth extra routes', () => {
       'student@myseneca.ca',
       'verify-token'
     );
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorType: 'anonymous',
+        action: 'user_registered',
+        entityId: 'user-1',
+        outcome: 'success',
+        requestId: '11111111-1111-4111-8111-111111111111',
+      }),
+      prisma
+    );
+    expect(JSON.stringify(vi.mocked(writeAuditLog).mock.calls)).not.toContain(
+      'verify-token'
+    );
+  });
+
+  test('POST /api/auth/register compensates atomically when email delivery fails', async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(null);
+    vi.mocked(hashPassword).mockResolvedValueOnce('hashed-password');
+    vi.mocked(generateUniqueUsername).mockResolvedValueOnce('caseyhsu123');
+    vi.mocked(generateVerifyToken).mockReturnValueOnce('verify-token');
+    vi.mocked(hashTokenForStorage).mockReturnValueOnce('verify-token-hash');
+    vi.mocked(getVerifyTokenExpiry).mockReturnValueOnce(
+      new Date('2026-07-06T08:00:00Z')
+    );
+    vi.mocked(prisma.user.create).mockResolvedValueOnce(userRow);
+    vi.mocked(sendVerificationEmail).mockRejectedValueOnce(
+      new Error('smtp unavailable')
+    );
+
+    const res = await request(createTestApp()).post('/api/auth/register').send({
+      email: 'student@myseneca.ca',
+      password: 'Password123',
+      firstName: 'Casey',
+      lastName: 'Hsu',
+      agreedToLegal: true,
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.body.code).toBe('EMAIL_SEND_FAILED');
+    expect(prisma.user.delete).toHaveBeenCalledWith({
+      where: { userId: 'user-1' },
+    });
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'user_registration_rolled_back',
+        entityId: 'user-1',
+        outcome: 'failure',
+        reasonCode: 'email_delivery_failed',
+      }),
+      prisma
+    );
   });
 
   test('GET /api/auth/verify-email returns 400 if token is missing', async () => {
@@ -148,6 +208,13 @@ describe('auth extra routes', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('MISSING_TOKEN');
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'email_verification_denied',
+        entityId: null,
+        reasonCode: 'missing_token',
+      })
+    );
   });
 
   test('GET /api/auth/verify-email returns 400 if token is invalid', async () => {
@@ -160,6 +227,12 @@ describe('auth extra routes', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('INVALID_TOKEN');
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'email_verification_denied',
+        reasonCode: 'invalid_token',
+      })
+    );
   });
 
   test('GET /api/auth/verify-email redirects after successful verification', async () => {
@@ -176,6 +249,14 @@ describe('auth extra routes', () => {
 
     expect(res.status).toBe(302);
     expect(res.headers.location).toBe('http://localhost:3000/email-verified');
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'email_verification_succeeded',
+        entityId: 'user-1',
+        outcome: 'success',
+      }),
+      prisma
+    );
   });
 
   test('POST /api/auth/refresh returns 401 if refresh token is expired', async () => {
@@ -191,6 +272,12 @@ describe('auth extra routes', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('REFRESH_TOKEN_EXPIRED');
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'refresh_token_denied',
+        reasonCode: 'expired_token',
+      })
+    );
   });
 
   test('POST /api/auth/refresh returns 401 if refresh token log is missing', async () => {
@@ -206,6 +293,12 @@ describe('auth extra routes', () => {
 
     expect(res.status).toBe(401);
     expect(res.body.code).toBe('INVALID_REFRESH_TOKEN');
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'refresh_token_denied',
+        reasonCode: 'missing_log',
+      })
+    );
   });
 
   test('POST /api/auth/refresh returns new access and refresh token', async () => {
@@ -225,8 +318,6 @@ describe('auth extra routes', () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(userRow);
     vi.mocked(signAccessToken).mockReturnValueOnce('new-access-token');
     vi.mocked(signRefreshToken).mockReturnValueOnce('new-refresh-token');
-    vi.mocked(prisma.$transaction).mockResolvedValueOnce([]);
-
     const app = createTestApp();
 
     const res = await request(app).post('/api/auth/refresh').send({
@@ -236,6 +327,19 @@ describe('auth extra routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.accessToken).toBe('new-access-token');
     expect(res.body.refreshToken).toBe('new-refresh-token');
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'user-1',
+        action: 'refresh_token_rotated',
+        entityId: 'user-1',
+        outcome: 'success',
+        requestId: '11111111-1111-4111-8111-111111111111',
+      }),
+      prisma
+    );
+    expect(JSON.stringify(vi.mocked(writeAuditLog).mock.calls)).not.toContain(
+      'old-refresh-token'
+    );
   });
 
   test('POST /api/auth/logout returns 501', async () => {

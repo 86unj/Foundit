@@ -3,6 +3,10 @@ import 'express';
 declare global {
   namespace Express {
     interface Request {
+      auditContext: {
+        requestId: string;
+        ipAddress?: string;
+      };
       user?: {
         user_id: string;
         role: 'student' | 'security' | 'admin';

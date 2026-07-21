@@ -1,6 +1,8 @@
 import { ClaimStatus } from '@prisma/client';
 import { prisma } from '../../db';
 import { generateMatchCandidates } from './matching';
+import { randomUUID } from 'node:crypto';
+import { writeAuditLog } from '../../utils/auditLog';
 
 const pendingMatchStatuses = [
   ClaimStatus.submitted,
@@ -8,7 +10,14 @@ const pendingMatchStatuses = [
 ] as const;
 
 export async function refreshClaimMatchSuggestions(
-  claimId: string
+  claimId: string,
+  audit?: {
+    actorId?: string;
+    actorType: 'user' | 'system';
+    requestId?: string;
+    runId?: string;
+    ipAddress?: string;
+  }
 ): Promise<{ candidateCount: number; suggestionCount: number }> {
   const claim = await prisma.claim.findUnique({
     where: { claimId },
@@ -81,6 +90,23 @@ export async function refreshClaimMatchSuggestions(
         data: { status: ClaimStatus.submitted },
       });
     }
+
+    if (audit) {
+      await writeAuditLog(
+        {
+          ...audit,
+          action: 'claim_match_suggestions_generated',
+          entityType: 'claim',
+          entityId: claim.claimId,
+          outcome: 'success',
+          details: {
+            candidateCount,
+            suggestionCount: scoredCandidates.length,
+          },
+        },
+        tx
+      );
+    }
   });
 
   return {
@@ -91,6 +117,7 @@ export async function refreshClaimMatchSuggestions(
 
 export function scheduleMatchRefreshForCampus(campusId: string) {
   void (async () => {
+    const runId = randomUUID();
     try {
       const claims = await prisma.claim.findMany({
         where: {
@@ -102,7 +129,10 @@ export function scheduleMatchRefreshForCampus(campusId: string) {
 
       for (const claim of claims) {
         try {
-          await refreshClaimMatchSuggestions(claim.claimId);
+          await refreshClaimMatchSuggestions(claim.claimId, {
+            actorType: 'system',
+            runId,
+          });
         } catch (error) {
           console.error('Failed to refresh claim match suggestions', {
             claimId: claim.claimId,

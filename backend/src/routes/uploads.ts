@@ -4,6 +4,11 @@ import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { r2, R2_BUCKET } from '../lib/r2';
 import authenticate from '../middleware/authenticate';
+import {
+  auditContextFromRequest,
+  writeAuditLogBestEffort,
+} from '../utils/auditLog';
+import { getUploadSizeCategory } from '../utils/uploadMetadata';
 
 const router = Router();
 
@@ -87,6 +92,20 @@ router.post('/presigned-url', authenticate, async (req, res, next) => {
 
     const uploadUrl = await getSignedUrl(r2, command, {
       expiresIn: 60 * 60,
+    });
+
+    await writeAuditLogBestEffort({
+      actorId: req.user!.user_id,
+      actorType: 'user',
+      action: 'upload_authorized',
+      entityType: 'upload',
+      entityId: null,
+      outcome: 'success',
+      details: {
+        contentType,
+        sizeCategory: getUploadSizeCategory(fileSizeKb),
+      },
+      ...auditContextFromRequest(req),
     });
 
     res.status(200).json({

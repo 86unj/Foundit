@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { randomUUID } from 'node:crypto';
 import {
   ClaimStatus,
   ItemStatus,
@@ -6,7 +7,7 @@ import {
   NotificationType,
 } from '@prisma/client';
 import { prisma } from '../db';
-import { writeAuditLog } from '../utils/auditLog';
+import { writeAuditLog, writeAuditLogs } from '../utils/auditLog';
 import {
   createClaimStatusUpdateInput,
   fanOutToCampusSecurity,
@@ -22,6 +23,7 @@ function getTodayUtcDate(): Date {
 
 export async function expireDueItems(): Promise<number> {
   const today = getTodayUtcDate();
+  const runId = randomUUID();
 
   const candidates = await prisma.item.findMany({
     where: {
@@ -79,6 +81,7 @@ export async function expireDueItems(): Promise<number> {
         claimId: true,
         studentId: true,
         itemName: true,
+        status: true,
       },
     });
 
@@ -124,7 +127,40 @@ export async function expireDueItems(): Promise<number> {
           createClaimStatusUpdateInput(claim, 'rejected')
         ),
       });
+      await writeAuditLog(
+        {
+          actorType: 'system',
+          action: 'notification_fanout_created',
+          entityType: 'notification',
+          entityId: null,
+          outcome: 'success',
+          runId,
+          details: {
+            recipientCount: affectedClaims.length,
+            sourceEntityType: 'claim',
+            notificationType: NotificationType.claim_status_update,
+          },
+        },
+        tx
+      );
     }
+
+    await writeAuditLogs(
+      affectedClaims.map((claim) => ({
+        actorType: 'system',
+        action: 'claim_status_updated',
+        entityType: 'claim',
+        entityId: claim.claimId,
+        outcome: 'success',
+        reasonCode: 'item_retention_expired',
+        runId,
+        details: {
+          previousStatus: claim.status,
+          nextStatus: ClaimStatus.rejected,
+        },
+      })),
+      tx
+    );
 
     // Notify security at each affected campus, batched per campus.
     const expiredCountByCampus = new Map<string, number>();
@@ -136,30 +172,33 @@ export async function expireDueItems(): Promise<number> {
     }
 
     for (const [campusId, count] of expiredCountByCampus) {
-      await fanOutToCampusSecurity(tx, campusId, {
-        type: NotificationType.item_expiring,
-        title: 'Item retention expired',
-        message: `${count} stored item${count === 1 ? '' : 's'} reached the end of retention and ${count === 1 ? 'was' : 'were'} marked expired.`,
-      });
+      await fanOutToCampusSecurity(
+        tx,
+        campusId,
+        {
+          type: NotificationType.item_expiring,
+          title: 'Item retention expired',
+          message: `${count} stored item${count === 1 ? '' : 's'} reached the end of retention and ${count === 1 ? 'was' : 'were'} marked expired.`,
+        },
+        { actorType: 'system', runId }
+      );
     }
 
-    await Promise.all(
-      eligibleItems.map((item) =>
-        writeAuditLog(
-          {
-            action: 'item_auto_expired',
-            entityType: 'item',
-            entityId: item.itemId,
-            details: {
-              previousStatus: ItemStatus.stored,
-              nextStatus: ItemStatus.expired,
-              retentionExpiryDate:
-                item.retentionExpiryDate?.toISOString() ?? null,
-            },
-          },
-          tx
-        )
-      )
+    await writeAuditLogs(
+      eligibleItems.map((item) => ({
+        action: 'item_auto_expired',
+        actorType: 'system',
+        entityType: 'item',
+        entityId: item.itemId,
+        outcome: 'success',
+        runId,
+        details: {
+          previousStatus: ItemStatus.stored,
+          nextStatus: ItemStatus.expired,
+          retentionExpiryDate: item.retentionExpiryDate?.toISOString() ?? null,
+        },
+      })),
+      tx
     );
 
     return eligibleItems.length;

@@ -5,7 +5,13 @@ import authenticate from '../middleware/authenticate';
 import requireRole from '../middleware/requireRole';
 import { validateQuery, validate } from '../validators/shared';
 import { resolveImageUrl } from '../utils/imageUrl';
-import { writeAuditLog } from '../utils/auditLog';
+import {
+  auditContextFromRequest,
+  type AuditLogParams,
+  writeAuditLog,
+  writeAuditLogs,
+  writeAuditLogBestEffort,
+} from '../utils/auditLog';
 import { scheduleItemSearchIndexIngest } from '../lib/matching/ingest';
 import { scheduleMatchRefreshForCampus } from '../lib/matching/suggestions';
 import {
@@ -528,6 +534,7 @@ router.post(
         return;
       }
 
+      const createContext = auditContextFromRequest(req);
       const item = await prisma.$transaction(async (tx) => {
         const created = await tx.item.create({
           data: {
@@ -562,6 +569,25 @@ router.post(
           });
         }
 
+        await writeAuditLog(
+          {
+            actorId: req.user!.user_id,
+            actorType: 'user',
+            action: 'item_created',
+            entityType: 'item',
+            entityId: created.itemId,
+            outcome: 'success',
+            details: {
+              category,
+              campusId,
+              dateFound: dateFound.toISOString().slice(0, 10),
+              imageCount: images.length,
+            },
+            ...createContext,
+          },
+          tx
+        );
+
         return created;
       });
 
@@ -577,20 +603,6 @@ router.post(
         });
         return;
       }
-
-      await writeAuditLog({
-        actorId: req.user!.user_id,
-        action: 'item_created',
-        entityType: 'item',
-        entityId: detail.itemId,
-        details: {
-          title: detail.title,
-          category: detail.category,
-          campusId,
-          dateFound: dateFound.toISOString().slice(0, 10),
-        },
-        ipAddress: req.ip,
-      });
 
       scheduleItemSearchIndexIngest(detail.itemId, {
         category: detail.category,
@@ -792,6 +804,21 @@ router.patch(
 
       const allowedTargets = validItemStatusTransitions[existing.status];
       if (!allowedTargets.includes(targetStatus)) {
+        const context = auditContextFromRequest(req);
+        await writeAuditLogBestEffort({
+          actorId: req.user!.user_id,
+          actorType: 'user',
+          action: 'item_status_denied',
+          entityType: 'item',
+          entityId: existing.itemId,
+          outcome: 'denied',
+          reasonCode: 'invalid_status_transition',
+          details: {
+            previousStatus: existing.status,
+            requestedStatus: targetStatus,
+          },
+          ...context,
+        });
         const isTerminal =
           existing.status === ItemStatus.claimed ||
           existing.status === ItemStatus.disposed;
@@ -812,6 +839,7 @@ router.patch(
           ? 'Item was marked expired by security.'
           : 'Item was marked disposed by security.');
 
+      const statusContext = auditContextFromRequest(req);
       const result = await prisma.$transaction(async (tx) => {
         const approvedClaim = await tx.claim.findFirst({
           where: {
@@ -824,6 +852,16 @@ router.patch(
         if (approvedClaim) {
           return { blocked: true as const };
         }
+
+        const affectedClaims = await tx.claim.findMany({
+          where: {
+            itemId: existing.itemId,
+            status: {
+              in: [ClaimStatus.submitted, ClaimStatus.under_review],
+            },
+          },
+          select: { claimId: true, status: true },
+        });
 
         await tx.claim.updateMany({
           where: {
@@ -850,10 +888,62 @@ router.patch(
           select: securityItemDetailSelect,
         });
 
+        await writeAuditLogs(
+          [
+            {
+              actorId: req.user!.user_id,
+              actorType: 'user',
+              action: 'item_status_updated',
+              entityType: 'item',
+              entityId: item.itemId,
+              outcome: 'success',
+              details: {
+                previousStatus: existing.status,
+                nextStatus: targetStatus,
+                reasonCategory: note
+                  ? 'security_note_supplied'
+                  : 'security_action',
+                retentionExpiryDate:
+                  existing.retentionExpiryDate?.toISOString() ?? null,
+              },
+              ...statusContext,
+            },
+            ...affectedClaims.map(
+              (claim): AuditLogParams => ({
+                actorId: req.user!.user_id,
+                actorType: 'user',
+                action: 'claim_status_updated',
+                entityType: 'claim',
+                entityId: claim.claimId,
+                outcome: 'success',
+                details: {
+                  previousStatus: claim.status,
+                  nextStatus: ClaimStatus.rejected,
+                  reasonCategory: 'item_lifecycle_transition',
+                  itemId: existing.itemId,
+                },
+                ...statusContext,
+              })
+            ),
+          ],
+          tx
+        );
+
         return { blocked: false as const, item };
       });
 
       if (result.blocked) {
+        await writeAuditLogBestEffort({
+          actorId: req.user!.user_id,
+          actorType: 'user',
+          action: 'item_status_denied',
+          entityType: 'item',
+          entityId: existing.itemId,
+          outcome: 'denied',
+          reasonCode: 'approved_claim_conflict',
+          details: { requestedStatus: targetStatus },
+          ...statusContext,
+        });
         res.status(409).json({
           code: 'ITEM_HAS_APPROVED_CLAIM',
           message:
@@ -863,21 +953,6 @@ router.patch(
       }
 
       const updated = result.item;
-
-      await writeAuditLog({
-        actorId: req.user!.user_id,
-        action: 'item_status_updated',
-        entityType: 'item',
-        entityId: updated.itemId,
-        details: {
-          previousStatus: existing.status,
-          nextStatus: targetStatus,
-          note,
-          retentionExpiryDate:
-            existing.retentionExpiryDate?.toISOString() ?? null,
-        },
-        ipAddress: req.ip,
-      });
 
       res.status(200).json(await toSecurityItemDetailDto(updated));
     } catch (err) {
@@ -984,37 +1059,49 @@ router.patch(
         existing.dateFound.toISOString().slice(0, 10) !==
         dateFound.toISOString().slice(0, 10);
 
-      const updated = await prisma.item.update({
-        where: { itemId: existing.itemId },
-        data: {
-          title,
-          category,
-          dateFound,
-          locationFound,
-          descriptionInternal,
-          ...(dateChanged
-            ? {
-                retentionExpiryDate: computeRetentionExpiryDate(
-                  dateFound,
-                  campus.retentionDays
-                ),
-              }
-            : {}),
-        },
-        select: securityItemDetailSelect,
-      });
-
-      await writeAuditLog({
-        actorId: req.user!.user_id,
-        action: 'item_updated',
-        entityType: 'item',
-        entityId: updated.itemId,
-        details: {
-          title,
-          category,
-          dateFound: dateFound.toISOString().slice(0, 10),
-        },
-        ipAddress: req.ip,
+      const updateContext = auditContextFromRequest(req);
+      const changedFields = [
+        'title',
+        'category',
+        'dateFound',
+        'locationFound',
+        'descriptionInternal',
+        ...(dateChanged ? ['retentionExpiryDate'] : []),
+      ];
+      const updated = await prisma.$transaction(async (tx) => {
+        const item = await tx.item.update({
+          where: { itemId: existing.itemId },
+          data: {
+            title,
+            category,
+            dateFound,
+            locationFound,
+            descriptionInternal,
+            ...(dateChanged
+              ? {
+                  retentionExpiryDate: computeRetentionExpiryDate(
+                    dateFound,
+                    campus.retentionDays
+                  ),
+                }
+              : {}),
+          },
+          select: securityItemDetailSelect,
+        });
+        await writeAuditLog(
+          {
+            actorId: req.user!.user_id,
+            actorType: 'user',
+            action: 'item_updated',
+            entityType: 'item',
+            entityId: item.itemId,
+            outcome: 'success',
+            details: { changedFields },
+            ...updateContext,
+          },
+          tx
+        );
+        return item;
       });
 
       scheduleItemSearchIndexIngest(updated.itemId, {
@@ -1123,6 +1210,7 @@ router.post(
       }
 
       const releasedAt = new Date();
+      const releaseContext = auditContextFromRequest(req);
 
       const result = await prisma.$transaction(async (tx) => {
         const updateResult = await tx.item.updateMany({
@@ -1145,22 +1233,20 @@ router.post(
         await writeAuditLog(
           {
             actorId: actor.userId,
+            actorType: 'user',
             action: 'item_walk_in_released',
             entityType: 'item',
             entityId: updated.itemId,
+            outcome: 'success',
             details: {
               releaseType: 'walk_in_no_claim',
-              studentFullName,
               idVerified,
-              contactNumber,
-              verificationNote: verificationNote ?? null,
+              verificationNoteProvided: Boolean(verificationNote),
+              contactProvided: Boolean(contactNumber),
+              studentNameProvided: Boolean(studentFullName),
               releasedAt: releasedAt.toISOString(),
-              releasedBy: {
-                userId: actor.userId,
-                name: `${actor.firstName} ${actor.lastName}`.trim(),
-              },
             },
-            ipAddress: req.ip,
+            ...releaseContext,
           },
           tx
         );
