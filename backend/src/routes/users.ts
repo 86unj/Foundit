@@ -290,39 +290,81 @@ router.patch(
   async (req, res, next) => {
     try {
       const userId = req.user!.user_id;
-      const existing = await loadActiveUserProfile(userId, res);
-      if (!existing) {
-        return;
-      }
-
       const { emailNotificationOptIn } = req.body as z.infer<
         typeof updateNotificationSchema
       >;
 
-      const updated = await prisma.user.update({
-        where: { userId },
-        data: { emailNotificationOptIn },
-        select: {
-          ...userProfileSelect,
-          campus: { select: { campusName: true } },
-        },
-      });
-
-      await writeAuditLog({
-        actorId: userId,
-        action: 'user_notification_preferences_updated',
-        entityType: 'user',
-        entityId: userId,
-        details: {
-          previous: {
-            emailNotificationOptIn: existing.emailNotificationOptIn,
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.user.findUnique({
+          where: { userId },
+          select: {
+            ...userProfileSelect,
+            campus: { select: { campusName: true } },
           },
-          updated: { emailNotificationOptIn },
-        },
-        ipAddress: req.ip,
+        });
+
+        if (!existing) {
+          return {
+            updated: undefined,
+            error: {
+              status: 404,
+              body: {
+                code: 'USER_NOT_FOUND',
+                message: 'User account no longer exists.',
+              },
+            },
+          } as const;
+        }
+
+        if (!existing.isActive) {
+          return {
+            updated: undefined,
+            error: {
+              status: 403,
+              body: {
+                code: 'ACCOUNT_INACTIVE',
+                message:
+                  'Your account has been deactivated. Contact an administrator.',
+              },
+            },
+          } as const;
+        }
+
+        const updated = await tx.user.update({
+          where: { userId },
+          data: { emailNotificationOptIn },
+          select: {
+            ...userProfileSelect,
+            campus: { select: { campusName: true } },
+          },
+        });
+
+        await writeAuditLog(
+          {
+            actorId: userId,
+            action: 'user_notification_preferences_updated',
+            entityType: 'user',
+            entityId: userId,
+            details: {
+              previous: {
+                emailNotificationOptIn: existing.emailNotificationOptIn,
+              },
+              updated: { emailNotificationOptIn },
+            },
+            ipAddress: req.ip,
+          },
+          tx
+        );
+
+        return { updated, error: undefined } as const;
       });
 
-      res.status(200).json(toUserProfileDto(updated));
+      if (result.error) {
+        res.status(result.error.status).json(result.error.body);
+        return;
+      }
+
+      res.status(200).json(toUserProfileDto(result.updated));
     } catch (err) {
       next(err);
     }

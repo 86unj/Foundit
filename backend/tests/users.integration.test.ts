@@ -36,6 +36,7 @@ vi.mock('../src/db', () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -199,9 +200,16 @@ describe('users routes', () => {
       ...userRow,
       emailNotificationOptIn: false,
     };
+    const tx = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(userRow),
+        update: vi.fn().mockResolvedValue(updatedUser),
+      },
+    };
 
-    vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(userRow);
-    vi.mocked(prisma.user.update).mockResolvedValueOnce(updatedUser);
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
 
     const app = createTestApp();
 
@@ -211,7 +219,12 @@ describe('users routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.emailNotificationOptIn).toBe(false);
-    expect(prisma.user.update).toHaveBeenCalledWith(
+    expect(tx.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'student-1' },
+      })
+    );
+    expect(tx.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { userId: 'student-1' },
         data: { emailNotificationOptIn: false },
@@ -223,7 +236,8 @@ describe('users routes', () => {
         action: 'user_notification_preferences_updated',
         entityType: 'user',
         entityId: 'student-1',
-      })
+      }),
+      tx
     );
   });
 });
