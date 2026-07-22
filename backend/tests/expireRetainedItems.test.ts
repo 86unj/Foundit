@@ -22,7 +22,6 @@ function createTx() {
           campusId: 'campus-1',
         },
       ]),
-      updateMany: vi.fn(),
     },
     claim: {
       findMany: vi.fn().mockResolvedValue([
@@ -47,6 +46,13 @@ function createTx() {
       create: vi.fn().mockResolvedValue({ logId: 'log-1' }),
       createMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
+    $queryRaw: vi.fn().mockResolvedValue([
+      {
+        itemId: 'item-1',
+        campusId: 'campus-1',
+        retentionExpiryDate: new Date('2026-07-01'),
+      },
+    ]),
   };
 }
 
@@ -130,5 +136,92 @@ describe('expireDueItems notifications', () => {
 
     expect(count).toBe(0);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  test('does not create side effects for an item that no longer expires', async () => {
+    (prisma.item.findMany as Mock).mockResolvedValue([
+      { itemId: 'item-1', retentionExpiryDate: new Date('2026-07-01') },
+    ]);
+
+    const tx = createTx();
+    tx.$queryRaw.mockResolvedValue([]);
+    (prisma.$transaction as Mock).mockImplementation(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const count = await expireDueItems();
+
+    expect(count).toBe(0);
+    expect(tx.claim.findMany).not.toHaveBeenCalled();
+    expect(tx.claim.updateMany).not.toHaveBeenCalled();
+    expect(tx.matchSuggestion.updateMany).not.toHaveBeenCalled();
+    expect(tx.notification.createMany).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.createMany).not.toHaveBeenCalled();
+  });
+
+  test('uses only successfully expired items for follow-up work', async () => {
+    (prisma.item.findMany as Mock).mockResolvedValue([
+      { itemId: 'item-1', retentionExpiryDate: new Date('2026-07-01') },
+      { itemId: 'item-2', retentionExpiryDate: new Date('2026-07-01') },
+    ]);
+
+    const tx = createTx();
+    tx.item.findMany.mockResolvedValue([
+      {
+        itemId: 'item-1',
+        retentionExpiryDate: new Date('2026-07-01'),
+        campusId: 'campus-1',
+      },
+      {
+        itemId: 'item-2',
+        retentionExpiryDate: new Date('2026-07-01'),
+        campusId: 'campus-2',
+      },
+    ]);
+    tx.$queryRaw.mockResolvedValue([
+      {
+        itemId: 'item-2',
+        campusId: 'campus-current',
+        retentionExpiryDate: new Date('2026-07-02'),
+      },
+    ]);
+    (prisma.$transaction as Mock).mockImplementation(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
+    const count = await expireDueItems();
+
+    expect(count).toBe(1);
+    expect(tx.claim.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ itemId: { in: ['item-2'] } }),
+      })
+    );
+    expect(tx.matchSuggestion.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ itemId: { in: ['item-2'] } }),
+      })
+    );
+    expect(tx.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ campusId: 'campus-current' }),
+      })
+    );
+    const auditRows = tx.auditLog.createMany.mock.calls.flatMap(
+      ([input]) => input.data
+    );
+    expect(auditRows).toContainEqual(
+      expect.objectContaining({
+        action: 'item_auto_expired',
+        entityId: 'item-2',
+      })
+    );
+    expect(auditRows).not.toContainEqual(
+      expect.objectContaining({
+        action: 'item_auto_expired',
+        entityId: 'item-1',
+      })
+    );
   });
 });

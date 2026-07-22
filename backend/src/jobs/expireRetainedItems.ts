@@ -5,6 +5,7 @@ import {
   ItemStatus,
   MatchStatus,
   NotificationType,
+  Prisma,
 } from '@prisma/client';
 import { prisma } from '../db';
 import { writeAuditLog, writeAuditLogs } from '../utils/auditLog';
@@ -66,13 +67,46 @@ export async function expireDueItems(): Promise<number> {
       return 0;
     }
 
-    const eligibleItemIds = eligibleItems.map((item) => item.itemId);
+    const expiredItems = await tx.$queryRaw<
+      Array<{
+        itemId: string;
+        campusId: string;
+        retentionExpiryDate: Date | null;
+      }>
+    >(
+      Prisma.sql`
+        UPDATE "item"
+        SET
+          "status" = ${ItemStatus.expired}::"item_status",
+          "updated_at" = CURRENT_TIMESTAMP
+        WHERE "item_id" IN (${Prisma.join(
+          eligibleItems.map((item) => Prisma.sql`${item.itemId}::uuid`)
+        )})
+          AND "status" = ${ItemStatus.stored}::"item_status"
+          AND "retention_expiry_date" <= ${today}
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "claim"
+            WHERE "claim"."item_id" = "item"."item_id"
+              AND "claim"."status" = ${ClaimStatus.approved}::"claim_status"
+          )
+        RETURNING
+          "item_id" AS "itemId",
+          "campus_id" AS "campusId",
+          "retention_expiry_date" AS "retentionExpiryDate"
+      `
+    );
 
-    // Snapshot the claims we're about to auto-reject so their students can
-    // be notified after the updateMany below.
+    if (expiredItems.length === 0) {
+      return 0;
+    }
+
+    const expiredItemIds = expiredItems.map((item) => item.itemId);
+
+    // Snapshot claims only after confirming that their item was expired.
     const affectedClaims = await tx.claim.findMany({
       where: {
-        itemId: { in: eligibleItemIds },
+        itemId: { in: expiredItemIds },
         status: {
           in: [ClaimStatus.submitted, ClaimStatus.under_review],
         },
@@ -87,7 +121,7 @@ export async function expireDueItems(): Promise<number> {
 
     await tx.claim.updateMany({
       where: {
-        itemId: { in: eligibleItemIds },
+        itemId: { in: expiredItemIds },
         status: {
           in: [ClaimStatus.submitted, ClaimStatus.under_review],
         },
@@ -100,21 +134,9 @@ export async function expireDueItems(): Promise<number> {
       },
     });
 
-    await tx.item.updateMany({
-      where: {
-        itemId: { in: eligibleItemIds },
-        status: ItemStatus.stored,
-        retentionExpiryDate: { lte: today },
-        claims: {
-          none: { status: ClaimStatus.approved },
-        },
-      },
-      data: { status: ItemStatus.expired },
-    });
-
     await tx.matchSuggestion.updateMany({
       where: {
-        itemId: { in: eligibleItemIds },
+        itemId: { in: expiredItemIds },
         status: MatchStatus.suggested,
       },
       data: { status: MatchStatus.dismissed },
@@ -164,7 +186,7 @@ export async function expireDueItems(): Promise<number> {
 
     // Notify security at each affected campus, batched per campus.
     const expiredCountByCampus = new Map<string, number>();
-    for (const item of eligibleItems) {
+    for (const item of expiredItems) {
       expiredCountByCampus.set(
         item.campusId,
         (expiredCountByCampus.get(item.campusId) ?? 0) + 1
@@ -185,7 +207,7 @@ export async function expireDueItems(): Promise<number> {
     }
 
     await writeAuditLogs(
-      eligibleItems.map((item) => ({
+      expiredItems.map((item) => ({
         action: 'item_auto_expired',
         actorType: 'system',
         entityType: 'item',
@@ -201,7 +223,7 @@ export async function expireDueItems(): Promise<number> {
       tx
     );
 
-    return eligibleItems.length;
+    return expiredItems.length;
   });
 
   return expiredCount;
