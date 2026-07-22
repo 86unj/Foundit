@@ -36,6 +36,7 @@ vi.mock('../src/db', () => ({
       findUnique: vi.fn(),
       update: vi.fn(),
     },
+    $transaction: vi.fn(),
   },
 }));
 
@@ -194,14 +195,49 @@ describe('users routes', () => {
     expect(res.body.code).toBe('STUDENT_NUMBER_TAKEN');
   });
 
-  test('PATCH /api/users/me/notifications returns 501 because it is not implemented yet', async () => {
+  test('PATCH /api/users/me/notifications updates student email opt-in', async () => {
+    const updatedUser = {
+      ...userRow,
+      emailNotificationOptIn: false,
+    };
+    const tx = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue(userRow),
+        update: vi.fn().mockResolvedValue(updatedUser),
+      },
+    };
+
+    vi.mocked(prisma.$transaction).mockImplementationOnce(
+      async (fn: (client: unknown) => unknown) => fn(tx)
+    );
+
     const app = createTestApp();
 
     const res = await request(app).patch('/api/users/me/notifications').send({
       emailNotificationOptIn: false,
     });
 
-    expect(res.status).toBe(501);
-    expect(res.body.code).toBe('NOT_IMPLEMENTED');
+    expect(res.status).toBe(200);
+    expect(res.body.emailNotificationOptIn).toBe(false);
+    expect(tx.user.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'student-1' },
+      })
+    );
+    expect(tx.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { userId: 'student-1' },
+        data: { emailNotificationOptIn: false },
+      })
+    );
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'student-1',
+        action: 'user_notification_preferences_updated',
+        entityType: 'user',
+        entityId: 'student-1',
+      }),
+      tx
+    );
   });
 });

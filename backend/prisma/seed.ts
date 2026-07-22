@@ -2,9 +2,25 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
+const MISSING_CAMPUS_ID = '00000000-0000-0000-0000-000000000000';
 
 async function main() {
   // ── Core data (always seeded) ─────────────────────────────────────────────
+
+  await prisma.campus.upsert({
+    where: { campusId: MISSING_CAMPUS_ID },
+    update: {
+      campusName: 'missing',
+      address: null,
+      retentionDays: 30,
+    },
+    create: {
+      campusId: MISSING_CAMPUS_ID,
+      campusName: 'missing',
+      address: null,
+      retentionDays: 30,
+    },
+  });
 
   const [newnham, senecaYork] = await Promise.all([
     prisma.campus.upsert({
@@ -45,7 +61,7 @@ async function main() {
     }),
   ]);
 
-  console.log('Campuses: Newnham, Seneca@York, King, Peterborough');
+  console.log('Campuses: missing, Newnham, Seneca@York, King, Peterborough');
 
   const adminHash = await bcrypt.hash('Admin@1234', 12);
   const admin = await prisma.user.upsert({

@@ -93,13 +93,7 @@ describe('useClaimItemForm', () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it('defaults notification preference to email (opted in)', () => {
-    const { result } = renderHook(() => useClaimItemForm());
-
-    expect(result.current.notificationPreference).toBe('email');
-  });
-
-  it('submits required fields without date/location and navigates', async () => {
+  it('submits trimmed values and navigates to the confirmation screen', async () => {
     apiFetchMock.mockResolvedValueOnce({ claimId: 'claim-1' });
     const { result } = renderHook(() => useClaimItemForm());
 
@@ -117,7 +111,6 @@ describe('useClaimItemForm', () => {
         category: 'Electronics',
         itemName: 'MacBook Pro',
         description: 'Black backpack',
-        notificationPreference: 'email',
         images: [],
       }),
     });
@@ -145,7 +138,6 @@ describe('useClaimItemForm', () => {
         description: 'Black backpack',
         dateLost: '2026-07-01',
         locationLost: 'Library 2nd floor',
-        notificationPreference: 'email',
         images: [],
       }),
     });
@@ -177,7 +169,6 @@ describe('useClaimItemForm', () => {
         category: 'Electronics',
         itemName: 'MacBook Pro',
         description: 'Black backpack',
-        notificationPreference: 'email',
         images: [
           { imageUrl: 'reports/abc.jpg', fileType: 'jpg', fileSizeKb: 120 },
         ],

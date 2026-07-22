@@ -25,10 +25,6 @@ const FIELD_ORDER = [
   'locationLost',
 ] as const;
 
-// What the student wants to be notified through when their claim advances.
-// Phone-based options are only selectable when the profile has a phone number.
-export type NotificationPreference = 'email' | 'phone' | 'email_and_phone';
-
 // Matches the Figma error copy: "{Field} is a required field".
 function requiredMsg(label: string): string {
   return `${label} is a required field`;
@@ -57,10 +53,6 @@ export function useClaimItemForm() {
   const [dateLost, setDateLost] = useState('');
   const [locationLost, setLocationLost] = useState('');
   const [description, setDescription] = useState('');
-  // Defaults to 'email' — students are opted in to email notifications unless
-  // they pick otherwise.
-  const [notificationPreference, setNotificationPreference] =
-    useState<NotificationPreference>('email');
   const [additionalInformation, setAdditionalInformation] = useState('');
   // Fed by the image gallery as raw Files; uploaded to R2 at submit time
   // (mirrors useReportFoundItemForm's handleImageUpload loop) and attached
@@ -164,7 +156,6 @@ export function useClaimItemForm() {
       hasDateLost: Boolean(dateLost.trim()),
       locationLostLength: trimmedLocation.length,
       descriptionLength: description.trim().length,
-      notificationPreference,
       additionalInformationLength: additionalInformation.trim().length,
       imageFileCount: imageFiles.length,
     });
@@ -194,7 +185,6 @@ export function useClaimItemForm() {
           dateLost: dateLost.trim() || undefined,
           locationLost: trimmedLocation || undefined,
           additionalInfo: additionalInformation.trim() || undefined,
-          notificationPreference,
           images: uploadedImages,
         }),
       });
@@ -238,8 +228,6 @@ export function useClaimItemForm() {
     setLocationLost,
     description,
     setDescription,
-    notificationPreference,
-    setNotificationPreference,
     additionalInformation,
     setAdditionalInformation,
     imageFiles,

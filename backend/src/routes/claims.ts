@@ -37,6 +37,7 @@ import {
 import { validate, validateQuery } from '../validators/shared';
 
 const router = Router();
+const MISSING_CAMPUS_ID = '00000000-0000-0000-0000-000000000000';
 
 const claimListSelect = {
   claimId: true,
@@ -68,6 +69,7 @@ const claimListSelect = {
       firstName: true,
       lastName: true,
       email: true,
+      emailNotificationOptIn: true,
       studentNumber: true,
     },
   },
@@ -600,13 +602,16 @@ async function notifySecurityOfClaimCancellation(
  *                 type: string
  *               itemName:
  *                 type: string
+ *               campusId:
+ *                 type: string
+ *                 format: uuid
  *               description:
  *                 type: string
  *               additionalInfo:
  *                 type: string
  *               notificationPreference:
  *                 type: string
- *                 enum: [email, phone, email_and_phone]
+ *                 enum: [email]
  *               dateLost:
  *                 type: string
  *                 format: date
@@ -647,28 +652,25 @@ router.post(
         return;
       }
 
-      // Temporary fallback: some student accounts currently have no campusId,
-      // but Claim.campusId is still required by the database schema. Use the
-      // first configured campus so claim submission can continue until campus
-      // selection is modeled explicitly on the claim form.
-      const campusId =
-        actor.campusId ??
-        (
-          await prisma.campus.findFirst({
-            select: { campusId: true },
-            orderBy: { campusName: 'asc' },
-          })
-        )?.campusId;
-
-      if (!campusId) {
-        res.status(409).json({
-          code: 'CLAIM_CAMPUS_REQUIRED',
-          message: 'A campus must be assigned before a claim can be submitted.',
-        });
-        return;
-      }
-
       const payload = req.body as CreateClaimInput;
+      // If the claim form provides a campus, honor it. Otherwise store the
+      // claim under the sentinel "missing" campus until the student chooses one.
+      const campusId = payload.campusId ?? MISSING_CAMPUS_ID;
+
+      if (payload.campusId) {
+        const campus = await prisma.campus.findUnique({
+          where: { campusId: payload.campusId },
+          select: { campusId: true },
+        });
+
+        if (!campus) {
+          res.status(404).json({
+            code: 'CAMPUS_NOT_FOUND',
+            message: 'Campus not found.',
+          });
+          return;
+        }
+      }
 
       const { claim, notification } = await prisma.$transaction(async (tx) => {
         const created = await tx.claim.create({

@@ -27,6 +27,7 @@ export interface StudentClaimEmailTarget {
     firstName: string;
     lastName: string;
     email: string;
+    emailNotificationOptIn: boolean;
   };
 }
 
@@ -47,8 +48,8 @@ function escapeHtml(value: string): string {
 
 function claimWantsEmail(claim: StudentClaimEmailTarget): boolean {
   return (
-    claim.notificationPreference === 'email' ||
-    claim.notificationPreference === 'email_and_phone'
+    claim.student.emailNotificationOptIn &&
+    claim.notificationPreference === 'email'
   );
 }
 

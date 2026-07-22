@@ -282,17 +282,92 @@ router.put(
   }
 );
 
-// TODO: Toggle email_notification_opt_in (students only)
 router.patch(
   '/me/notifications',
   authenticate,
   requireRole('student'),
   validate(updateNotificationSchema),
-  (_req, res) => {
-    res.status(501).json({
-      code: 'NOT_IMPLEMENTED',
-      message: 'PATCH /api/users/me/notifications not yet implemented',
-    });
+  async (req, res, next) => {
+    try {
+      const userId = req.user!.user_id;
+      const { emailNotificationOptIn } = req.body as z.infer<
+        typeof updateNotificationSchema
+      >;
+
+      const result = await prisma.$transaction(async (tx) => {
+        const existing = await tx.user.findUnique({
+          where: { userId },
+          select: {
+            ...userProfileSelect,
+            campus: { select: { campusName: true } },
+          },
+        });
+
+        if (!existing) {
+          return {
+            updated: undefined,
+            error: {
+              status: 404,
+              body: {
+                code: 'USER_NOT_FOUND',
+                message: 'User account no longer exists.',
+              },
+            },
+          } as const;
+        }
+
+        if (!existing.isActive) {
+          return {
+            updated: undefined,
+            error: {
+              status: 403,
+              body: {
+                code: 'ACCOUNT_INACTIVE',
+                message:
+                  'Your account has been deactivated. Contact an administrator.',
+              },
+            },
+          } as const;
+        }
+
+        const updated = await tx.user.update({
+          where: { userId },
+          data: { emailNotificationOptIn },
+          select: {
+            ...userProfileSelect,
+            campus: { select: { campusName: true } },
+          },
+        });
+
+        await writeAuditLog(
+          {
+            actorId: userId,
+            action: 'user_notification_preferences_updated',
+            entityType: 'user',
+            entityId: userId,
+            details: {
+              previous: {
+                emailNotificationOptIn: existing.emailNotificationOptIn,
+              },
+              updated: { emailNotificationOptIn },
+            },
+            ipAddress: req.ip,
+          },
+          tx
+        );
+
+        return { updated, error: undefined } as const;
+      });
+
+      if (result.error) {
+        res.status(result.error.status).json(result.error.body);
+        return;
+      }
+
+      res.status(200).json(toUserProfileDto(result.updated));
+    } catch (err) {
+      next(err);
+    }
   }
 );
 

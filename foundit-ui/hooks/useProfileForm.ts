@@ -146,21 +146,48 @@ export function useProfileForm() {
         body: JSON.stringify(body),
       });
 
-      if (profileRes.ok) {
+      if (!profileRes.ok) {
+        const errBody = (await profileRes.json().catch(() => null)) as {
+          message?: string;
+          code?: string;
+        } | null;
+        setSaveStatus('error');
+        setSaveErrorMessage(
+          errBody?.code === 'STUDENT_NUMBER_TAKEN'
+            ? (errBody.message ??
+                'That student ID is already linked to another account.')
+            : (errBody?.message ?? 'Save failed. Please try again.')
+        );
+        return;
+      }
+
+      const notificationRes = await fetch(
+        `${API_BASE}/api/users/me/notifications`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token,
+          },
+          body: JSON.stringify({
+            emailNotificationOptIn: allowEmailNotifications,
+          }),
+        }
+      );
+
+      if (notificationRes.ok) {
         setSaveStatus('success');
         return;
       }
 
-      const errBody = (await profileRes.json().catch(() => null)) as {
+      const notificationErrBody = (await notificationRes
+        .json()
+        .catch(() => null)) as {
         message?: string;
-        code?: string;
       } | null;
       setSaveStatus('error');
       setSaveErrorMessage(
-        errBody?.code === 'STUDENT_NUMBER_TAKEN'
-          ? (errBody.message ??
-              'That student ID is already linked to another account.')
-          : (errBody?.message ?? 'Save failed. Please try again.')
+        notificationErrBody?.message ?? 'Save failed. Please try again.'
       );
     } catch {
       setSaveStatus('error');

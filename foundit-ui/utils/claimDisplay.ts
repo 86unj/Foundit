@@ -68,8 +68,6 @@ const notificationPreferenceLabels: Record<
   string
 > = {
   email: 'Email',
-  phone: 'Phone',
-  email_and_phone: 'Email and phone',
 };
 
 export function formatNotificationPreference(
