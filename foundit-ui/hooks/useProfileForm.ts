@@ -180,9 +180,9 @@ export function useProfileForm() {
         return;
       }
 
-      const notificationErrBody = (await notificationRes.json().catch(
-        () => null
-      )) as {
+      const notificationErrBody = (await notificationRes
+        .json()
+        .catch(() => null)) as {
         message?: string;
       } | null;
       setSaveStatus('error');
