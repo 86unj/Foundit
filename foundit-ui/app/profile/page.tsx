@@ -246,7 +246,7 @@ function ProfileSettingsContent() {
                             />
                           )}
 
-                          {/* <HStack gap={4} align="center">
+                          <HStack gap={4} align="center">
                             <Text fontSize="sm" color="gray.700">
                               Allow email notifications
                             </Text>
@@ -262,7 +262,7 @@ function ProfileSettingsContent() {
                                 <Switch.Thumb />
                               </Switch.Control>
                             </Switch.Root>
-                          </HStack> */}
+                          </HStack>
                         </Stack>
 
                         {/* Save row */}
