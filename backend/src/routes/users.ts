@@ -8,8 +8,10 @@ import { validate } from '../validators/shared';
 import {
   replaceProfileSchema,
   updateNotificationSchema,
+  updateProfilePhotoSchema,
 } from '../validators/users';
 import { auditContextFromRequest, writeAuditLog } from '../utils/auditLog';
+import { resolveImageUrl } from '../utils/imageUrl';
 
 const router = Router();
 
@@ -24,6 +26,7 @@ const userProfileSelect = {
   campusId: true,
   studentNumber: true,
   employeeId: true,
+  profilePhotoUrl: true,
   emailNotificationOptIn: true,
   isActive: true,
   createdAt: true,
@@ -34,7 +37,12 @@ type UserProfileRow = Pick<User, keyof typeof userProfileSelect> & {
   campus?: { campusName: string } | null;
 };
 
-function toUserProfileDto(user: UserProfileRow) {
+/**
+ * `profilePhotoUrl` is stored as a bucket key but returned resolved (public or
+ * presigned GET), matching how items and claims expose image URLs. The resolve
+ * step is async, so every call site awaits.
+ */
+async function toUserProfileDto(user: UserProfileRow) {
   return {
     userId: user.userId,
     email: user.email,
@@ -47,6 +55,9 @@ function toUserProfileDto(user: UserProfileRow) {
     studentNumber:
       user.studentNumber !== null ? Number(user.studentNumber) : null,
     employeeId: user.employeeId,
+    profilePhotoUrl: user.profilePhotoUrl
+      ? await resolveImageUrl(user.profilePhotoUrl)
+      : null,
     emailNotificationOptIn: user.emailNotificationOptIn,
     isActive: user.isActive,
     createdAt: user.createdAt,
@@ -125,6 +136,10 @@ async function loadActiveUserProfile(
  *                 employeeId:
  *                   type: string
  *                   nullable: true
+ *                 profilePhotoUrl:
+ *                   type: string
+ *                   nullable: true
+ *                   description: Resolved image URL, or null when no photo is set
  *                 emailNotificationOptIn:
  *                   type: boolean
  *                 isActive:
@@ -149,7 +164,7 @@ router.get('/me', authenticate, async (req, res, next) => {
       return;
     }
 
-    res.status(200).json(toUserProfileDto(user));
+    res.status(200).json(await toUserProfileDto(user));
   } catch (err) {
     next(err);
   }
@@ -274,7 +289,7 @@ router.put(
         throw err;
       }
 
-      res.status(200).json(toUserProfileDto(updated));
+      res.status(200).json(await toUserProfileDto(updated));
     } catch (err) {
       next(err);
     }
@@ -363,7 +378,98 @@ router.patch(
         return;
       }
 
-      res.status(200).json(toUserProfileDto(result.updated));
+      res.status(200).json(await toUserProfileDto(result.updated));
+    } catch (err) {
+      next(err);
+    }
+  }
+);
+
+/**
+ * @openapi
+ * /api/users/me/photo:
+ *   patch:
+ *     summary: Set or clear the authenticated user's profile photo
+ *     description: >
+ *       Accepts the object key returned by `POST /api/uploads/presigned-url`
+ *       with `purpose: avatar`, or `null` to remove the photo. Absolute URLs
+ *       are rejected — the profile response returns a resolved (and possibly
+ *       expiring) URL that must not be written back.
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [profilePhotoUrl]
+ *             properties:
+ *               profilePhotoUrl:
+ *                 type: string
+ *                 nullable: true
+ *                 example: avatars/2f6c1b90-1f7c-4a1f-9a6e-6f0f2d1c9b11.webp
+ *     responses:
+ *       '200':
+ *         description: Updated user profile
+ *       '400':
+ *         description: Validation error
+ *       '401':
+ *         description: Missing or invalid access token
+ *       '403':
+ *         description: Account has been deactivated
+ *       '404':
+ *         description: User no longer exists
+ */
+router.patch(
+  '/me/photo',
+  // No requireRole — every role has a profile photo.
+  authenticate,
+  validate(updateProfilePhotoSchema),
+  async (req, res, next) => {
+    try {
+      const userId = req.user!.user_id;
+      const existing = await loadActiveUserProfile(userId, res);
+      if (!existing) {
+        return;
+      }
+
+      const { profilePhotoUrl } = req.body as z.infer<
+        typeof updateProfilePhotoSchema
+      >;
+      const context = auditContextFromRequest(req);
+
+      const updated = await prisma.$transaction(async (tx) => {
+        const profile = await tx.user.update({
+          where: { userId },
+          data: { profilePhotoUrl },
+          select: {
+            ...userProfileSelect,
+            campus: { select: { campusName: true } },
+          },
+        });
+
+        await writeAuditLog(
+          {
+            actorId: userId,
+            actorType: 'user',
+            action: 'user_profile_photo_updated',
+            entityType: 'user',
+            entityId: userId,
+            outcome: 'success',
+            details: {
+              operation: profilePhotoUrl === null ? 'cleared' : 'set',
+            },
+            ...context,
+          },
+          tx
+        );
+
+        return profile;
+      });
+
+      res.status(200).json(await toUserProfileDto(updated));
     } catch (err) {
       next(err);
     }

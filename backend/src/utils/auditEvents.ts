@@ -32,6 +32,15 @@ export const auditEvents = {
     ['changedFields'],
     ['changedFields']
   ),
+  // Details deliberately carry only the operation — the object key and any
+  // resolved URL are prohibited audit detail values.
+  user_profile_photo_updated: event(
+    'users',
+    'user',
+    'required',
+    ['operation'],
+    ['operation']
+  ),
   user_notification_preferences_updated: event(
     'users',
     'user',
@@ -179,7 +188,7 @@ export const auditEvents = {
     'uploads',
     'upload',
     'best_effort',
-    ['contentType', 'sizeCategory'],
+    ['contentType', 'sizeCategory', 'purpose'],
     ['contentType', 'sizeCategory']
   ),
   photo_session_created: event('photoSessions', 'photo_session', 'required', [

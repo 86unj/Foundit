@@ -13,6 +13,25 @@ import { getUploadSizeCategory } from '../utils/uploadMetadata';
 const router = Router();
 
 /**
+ * Object key prefix per upload purpose. Keeping avatars under their own prefix
+ * lets item photos and profile photos be given different lifecycle rules later.
+ */
+const KEY_PREFIX_BY_PURPOSE = {
+  report: 'reports',
+  avatar: 'avatars',
+} as const;
+
+type UploadPurpose = keyof typeof KEY_PREFIX_BY_PURPOSE;
+
+function isUploadPurpose(value: unknown): value is UploadPurpose {
+  // Object.hasOwn, not `in` — `in` walks the prototype chain, so 'constructor'
+  // and friends would pass and yield a garbage key prefix.
+  return (
+    typeof value === 'string' && Object.hasOwn(KEY_PREFIX_BY_PURPOSE, value)
+  );
+}
+
+/**
  * @openapi
  * /api/uploads/presigned-url:
  *   post:
@@ -35,6 +54,11 @@ const router = Router();
  *               fileSizeKb:
  *                 type: integer
  *                 example: 350
+ *               purpose:
+ *                 type: string
+ *                 enum: [report, avatar]
+ *                 default: report
+ *                 description: Selects the object key prefix. Omit for item report photos.
  *     responses:
  *       '200':
  *         description: Presigned upload URL created
@@ -45,12 +69,22 @@ const router = Router();
  */
 router.post('/presigned-url', authenticate, async (req, res, next) => {
   try {
-    const { fileName, contentType, fileSizeKb } = req.body;
+    const { fileName, contentType, fileSizeKb, purpose } = req.body;
 
     if (!fileName || !contentType || !fileSizeKb) {
       res.status(400).json({
         code: 'MISSING_FILE_INFO',
         message: 'fileName, contentType, and fileSizeKb are required.',
+      });
+      return;
+    }
+
+    // Optional — callers that predate profile photos omit it and keep the
+    // original 'reports/' prefix.
+    if (purpose !== undefined && !isUploadPurpose(purpose)) {
+      res.status(400).json({
+        code: 'UNSUPPORTED_UPLOAD_PURPOSE',
+        message: "purpose must be 'report' or 'avatar'.",
       });
       return;
     }
@@ -73,7 +107,9 @@ router.post('/presigned-url', authenticate, async (req, res, next) => {
     }
 
     const ext = contentType.split('/')[1];
-    const key = `reports/${crypto.randomUUID()}.${ext}`;
+    const prefix =
+      KEY_PREFIX_BY_PURPOSE[(purpose ?? 'report') as UploadPurpose];
+    const key = `${prefix}/${crypto.randomUUID()}.${ext}`;
 
     const command = new PutObjectCommand({
       Bucket: R2_BUCKET,
@@ -104,6 +140,7 @@ router.post('/presigned-url', authenticate, async (req, res, next) => {
       details: {
         contentType,
         sizeCategory: getUploadSizeCategory(fileSizeKb),
+        purpose: purpose ?? 'report',
       },
       ...auditContextFromRequest(req),
     });

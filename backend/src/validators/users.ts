@@ -33,6 +33,29 @@ export const updateNotificationSchema = z.object({
   emailNotificationOptIn: z.boolean(),
 });
 
+// PATCH /api/users/me/photo
+// Accepts only a bucket key produced by POST /api/uploads/presigned-url with
+// purpose 'avatar', or null to clear the photo. Absolute URLs are rejected on
+// purpose: the profile DTO returns a *resolved* URL (a presigned GET that
+// expires within the hour when R2_PUBLIC_BASE_URL is unset), so a client that
+// echoes a fetched value back must fail loudly rather than persist a URL that
+// will rot.
+export const AVATAR_KEY_PATTERN =
+  /^avatars\/[A-Za-z0-9-]+\.(jpeg|jpg|png|webp)$/;
+
+export const updateProfilePhotoSchema = z.object({
+  profilePhotoUrl: z.union([
+    z.null(),
+    z
+      .string()
+      .max(500)
+      .regex(
+        AVATAR_KEY_PATTERN,
+        'profilePhotoUrl must be an avatar object key, not a URL.'
+      ),
+  ]),
+});
+
 // POST /api/admin/users — password and role-conditional fields (studentNumber/employeeId)
 // are added in Week 4 once the login flow is implemented.
 export const createUserSchema = z.object({
