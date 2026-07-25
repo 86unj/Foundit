@@ -4,24 +4,22 @@ import { useEffect, useState } from 'react';
 import { getLoggedInUser, getAccessToken } from '@/utils/auth';
 
 import { API_BASE } from '@/lib/api/client';
+import { updateProfilePhoto } from '@/lib/api/users';
+import handleImageUpload from '@/utils/handleImageUpload';
+import { useProfilePhoto } from '@/hooks/useProfilePhoto';
+import { setProfilePhoto } from '@/utils/profilePhotoStore';
+import type { UserProfile } from '@/types/users';
 
 // Prefill sources per field:
 //   fullName, email            → localStorage key 'user' (stored at login)
 //   studentId                  → GET /api/users/me → studentNumber
 //   emailNotificationOptIn     → GET /api/users/me
+//   profilePhotoUrl            → GET /api/users/me
 const PLACEHOLDER = {
   fullName: '',
   email: '',
   emailNotificationOptIn: true,
 };
-
-interface UserProfileResponse {
-  firstName: string;
-  lastName: string;
-  email: string;
-  studentNumber: number | null;
-  emailNotificationOptIn: boolean;
-}
 
 /** Seneca student numbers are 9 digits (100000000–999999999). */
 function parseStudentId(value: string): number | null | 'invalid' {
@@ -51,6 +49,16 @@ export function useProfileForm() {
   );
   const [isLoading, setIsLoading] = useState(true);
 
+  // The photo saves on selection rather than with the Save button, so it owns
+  // its own busy/error state — a failed upload must not read as a failed name
+  // save, and the avatar must never show an image the server does not have.
+  //
+  // It lives in the shared store rather than local state so the navbar avatar
+  // tracks every change here, including the optimistic preview and rollback.
+  const photoUrl = useProfilePhoto();
+  const [photoStatus, setPhotoStatus] = useState<'idle' | 'uploading'>('idle');
+  const [photoError, setPhotoError] = useState('');
+
   // Separate saving state so the Save button can show an activity indicator
   // independently from the initial page load.
   const [isSaving, setIsSaving] = useState(false);
@@ -74,13 +82,14 @@ export function useProfileForm() {
         });
 
         if (res.ok) {
-          const data: UserProfileResponse = await res.json();
+          const data: UserProfile = await res.json();
           setFullName(`${data.firstName} ${data.lastName}`.trim());
           setEmail(data.email);
           setStudentId(
             data.studentNumber != null ? String(data.studentNumber) : ''
           );
           setAllowEmailNotifications(data.emailNotificationOptIn);
+          setProfilePhoto(data.profilePhotoUrl ?? null);
         }
         // 4xx — silently keep localStorage-seeded defaults
       } catch {
@@ -197,6 +206,65 @@ export function useProfileForm() {
     }
   };
 
+  /**
+   * Uploads the picked file to R2 and persists the resulting key immediately.
+   * A local object URL fills the avatar while the upload runs; on failure the
+   * previous photo is restored so the UI never diverges from the server.
+   */
+  const handlePhotoSelected = async (file: File) => {
+    const token = getAccessToken();
+    if (!token) {
+      setPhotoError('Photo upload failed. Please try again.');
+      return;
+    }
+
+    const previousPhotoUrl = photoUrl;
+    const previewUrl = URL.createObjectURL(file);
+
+    setPhotoError('');
+    setPhotoStatus('uploading');
+    setProfilePhoto(previewUrl);
+
+    try {
+      const { imageUrl } = await handleImageUpload(file, token, {
+        purpose: 'avatar',
+      });
+      const profile = await updateProfilePhoto(imageUrl);
+      setProfilePhoto(profile.profilePhotoUrl);
+    } catch (err) {
+      setProfilePhoto(previousPhotoUrl);
+      setPhotoError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Photo upload failed. Please try again.'
+      );
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setPhotoStatus('idle');
+    }
+  };
+
+  const handlePhotoRemove = async () => {
+    const previousPhotoUrl = photoUrl;
+
+    setPhotoError('');
+    setPhotoStatus('uploading');
+    setProfilePhoto(null);
+
+    try {
+      await updateProfilePhoto(null);
+    } catch (err) {
+      setProfilePhoto(previousPhotoUrl);
+      setPhotoError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Could not remove photo. Please try again.'
+      );
+    } finally {
+      setPhotoStatus('idle');
+    }
+  };
+
   const initials = fullName
     .trim()
     .split(/\s+/)
@@ -222,5 +290,10 @@ export function useProfileForm() {
     saveErrorMessage,
     handleSave,
     initials,
+    photoUrl,
+    photoStatus,
+    photoError,
+    handlePhotoSelected,
+    handlePhotoRemove,
   };
 }

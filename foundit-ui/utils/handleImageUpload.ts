@@ -2,7 +2,14 @@ import { API_BASE } from '@/lib/api/client';
 import { compressImage } from './imageCompression';
 import type { PresignedUrlResponse } from '../types/uploads';
 
-async function handleImageUpload(file: File, accessToken: string) {
+/** Selects the bucket key prefix server-side. Defaults to item report photos. */
+export type UploadPurpose = 'report' | 'avatar';
+
+async function handleImageUpload(
+  file: File,
+  accessToken: string,
+  options?: { purpose?: UploadPurpose }
+) {
   // Compress the image before uploading (target: 5MB, max 1600px)
   const compressedFile = await compressImage(file);
 
@@ -20,6 +27,7 @@ async function handleImageUpload(file: File, accessToken: string) {
         fileName: compressedFile.name,
         contentType: compressedFile.type,
         fileSizeKb: Math.ceil(compressedFile.size / 1024),
+        purpose: options?.purpose ?? 'report',
       }),
     }
   );
