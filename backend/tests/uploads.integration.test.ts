@@ -142,6 +142,7 @@ describe('uploads routes', () => {
         details: {
           contentType: 'image/png',
           sizeCategory: 'up_to_1mb',
+          purpose: 'report',
         },
       })
     );
@@ -151,5 +152,42 @@ describe('uploads routes', () => {
     expect(
       JSON.stringify(vi.mocked(writeAuditLogBestEffort).mock.calls)
     ).not.toContain('phone.png');
+  });
+
+  test('POST /api/uploads/presigned-url keys avatar uploads under avatars/', async () => {
+    vi.mocked(getSignedUrl).mockResolvedValueOnce(
+      'https://fake-upload-url.com'
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/uploads/presigned-url').send({
+      fileName: 'me.webp',
+      contentType: 'image/webp',
+      fileSizeKb: 200,
+      purpose: 'avatar',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.imageUrl).toMatch(/^avatars\/.+\.webp$/);
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.objectContaining({ purpose: 'avatar' }),
+      })
+    );
+  });
+
+  test('POST /api/uploads/presigned-url rejects an unknown purpose', async () => {
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/uploads/presigned-url').send({
+      fileName: 'me.webp',
+      contentType: 'image/webp',
+      fileSizeKb: 200,
+      purpose: 'constructor',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('UNSUPPORTED_UPLOAD_PURPOSE');
   });
 });

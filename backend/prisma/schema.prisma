@@ -110,6 +110,7 @@ model User {
   studentNumber             BigInt?   @unique @map("student_number")
   employeeId                String?   @unique @map("employee_id") @db.VarChar(12)
   phone                     String?   @db.VarChar(10)
+  profilePhotoUrl           String?   @map("profile_photo_url") @db.VarChar(500)
   emailNotificationOptIn    Boolean   @default(false) @map("email_notification_opt_in")
   isActive                  Boolean   @default(true) @map("is_active")
   createdAt                 DateTime  @default(now()) @map("created_at")
