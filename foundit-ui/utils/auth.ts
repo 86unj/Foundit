@@ -1,4 +1,5 @@
 import { parseRole, ROLE_HOME, type UserRole } from './routes';
+import { clearProfilePhoto } from './profilePhotoStore';
 
 export type { UserRole };
 export { ROLE_HOME };
@@ -16,6 +17,7 @@ export function clearSessionRole() {
 /** Clears client-side auth state (role cookie + stored tokens). */
 export function clearAuthSession() {
   clearSessionRole();
+  clearProfilePhoto();
   if (typeof window !== 'undefined') {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('user');

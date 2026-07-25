@@ -41,6 +41,7 @@ import {
   Flex,
   HStack,
   IconButton,
+  Image,
   Link,
   Menu,
   Text,
@@ -55,6 +56,7 @@ import { useEffect, useState } from 'react';
 import { signOut } from '@/utils/auth';
 import { fetchNotifications } from '@/lib/api/notifications';
 import { useNotificationsBadge } from '@/components/NotificationsProvider';
+import { useProfilePhoto } from '@/hooks/useProfilePhoto';
 import { NOTIFICATIONS_PATH, type UserRole } from '@/utils/routes';
 
 /**
@@ -116,6 +118,8 @@ export function Dropdown({
   unreadCount = 0,
 }: DropdownProps) {
   const router = useRouter();
+  // Only the 'user' variant renders an avatar, so only it should fetch.
+  const photoUrl = useProfilePhoto(variant === 'user');
 
   const trigger = (() => {
     switch (variant) {
@@ -136,7 +140,17 @@ export function Dropdown({
                 {userName}
               </Text>
               <Box position="relative" display="inline-flex">
-                <MdiIcon path={mdiAccountCircle} size={0.9} />
+                {photoUrl ? (
+                  <Image
+                    src={photoUrl}
+                    alt=""
+                    boxSize="22px"
+                    rounded="full"
+                    objectFit="cover"
+                  />
+                ) : (
+                  <MdiIcon path={mdiAccountCircle} size={0.9} />
+                )}
                 {unreadCount > 0 && (
                   <Circle
                     size="8px"
