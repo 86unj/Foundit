@@ -14,12 +14,13 @@ import {
   Button,
   Flex,
   HStack,
+  Image,
   Spinner,
   Stack,
   Switch,
   Text,
 } from '@chakra-ui/react';
-import { Suspense, useSyncExternalStore } from 'react';
+import { Suspense, useRef, useSyncExternalStore } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 // Returns a primitive string so useSyncExternalStore compares by value.
@@ -58,7 +59,16 @@ function ProfileSettingsContent() {
     saveErrorMessage,
     handleSave,
     initials,
+    photoUrl,
+    photoStatus,
+    photoError,
+    handlePhotoSelected,
+    handlePhotoRemove,
   } = useProfileForm();
+
+  // "Change Photo" is a styled button rather than a label, so it forwards the
+  // click to the hidden input.
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   return (
     // Provider links the navbar bell and the notifications tab, so marking
@@ -180,33 +190,88 @@ function ProfileSettingsContent() {
                       </Flex>
                     ) : (
                       <>
-                        {/* Avatar + change photo */}
-                        <HStack gap={4} align="center">
-                          <Flex
-                            w="80px"
-                            h="80px"
-                            rounded="full"
-                            bg="blue.500"
-                            align="center"
-                            justify="center"
-                            flexShrink={0}
-                          >
-                            <Text
-                              color="white"
-                              fontSize="2xl"
-                              fontWeight="bold"
+                        {/* Avatar + change photo — the photo saves on
+                            selection, independently of the Save button. */}
+                        <Stack gap={2}>
+                          <HStack gap={4} align="center">
+                            {photoUrl ? (
+                              <Image
+                                src={photoUrl}
+                                alt=""
+                                w="80px"
+                                h="80px"
+                                rounded="full"
+                                objectFit="cover"
+                                flexShrink={0}
+                              />
+                            ) : (
+                              <Flex
+                                w="80px"
+                                h="80px"
+                                rounded="full"
+                                bg="blue.500"
+                                align="center"
+                                justify="center"
+                                flexShrink={0}
+                              >
+                                <Text
+                                  color="white"
+                                  fontSize="2xl"
+                                  fontWeight="bold"
+                                >
+                                  {initials || '?'}
+                                </Text>
+                              </Flex>
+                            )}
+
+                            <input
+                              ref={photoInputRef}
+                              type="file"
+                              accept="image/jpeg,image/png,image/webp"
+                              hidden
+                              data-testid="profile-photo-input"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                // Reset first so re-picking the same file
+                                // still fires a change event.
+                                e.target.value = '';
+                                if (file) handlePhotoSelected(file);
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              borderColor="gray.300"
+                              loading={photoStatus === 'uploading'}
+                              loadingText="Uploading..."
+                              onClick={() => photoInputRef.current?.click()}
                             >
-                              {initials || '?'}
+                              Change Photo
+                            </Button>
+
+                            {photoUrl && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                color="red.600"
+                                disabled={photoStatus === 'uploading'}
+                                onClick={handlePhotoRemove}
+                              >
+                                Remove
+                              </Button>
+                            )}
+                          </HStack>
+
+                          {photoError && (
+                            <Text
+                              fontSize="sm"
+                              color="fg.error"
+                              fontWeight="medium"
+                            >
+                              {photoError}
                             </Text>
-                          </Flex>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            borderColor="gray.300"
-                          >
-                            Change Photo
-                          </Button>
-                        </HStack>
+                          )}
+                        </Stack>
 
                         {/* Form fields */}
                         <Stack gap={5}>
