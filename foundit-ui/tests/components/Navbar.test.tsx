@@ -1,10 +1,11 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import Navbar from '@/components/Navbar';
 import { fetchNotifications } from '@/lib/api/notifications';
 import { NOTIFICATIONS_PATH } from '@/utils/routes';
 import { renderWithProvider } from '../testUtils';
+import { clearProfilePhoto, setProfilePhoto } from '@/utils/profilePhotoStore';
 
 const pushMock = vi.fn();
 
@@ -55,5 +56,45 @@ describe('Navbar notifications entry', () => {
 
     expect(screen.queryByText('Notifications')).toBeNull();
     expect(fetchNotificationsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('Navbar avatar', () => {
+  beforeEach(() => {
+    clearProfilePhoto();
+  });
+
+  it('falls back to the account icon when no photo is set', async () => {
+    const { container } = renderWithProvider(
+      <Navbar variant="student" userName="Casey H" />
+    );
+
+    await screen.findByLabelText(/Account menu/);
+    expect(container.querySelector('img')).toBeNull();
+  });
+
+  it('renders the profile photo once one is set', async () => {
+    renderWithProvider(<Navbar variant="student" userName="Casey H" />);
+    await screen.findByLabelText(/Account menu/);
+
+    act(() => setProfilePhoto('https://cdn.test.local/avatars/a.png'));
+
+    await waitFor(() => {
+      const img = document.querySelector('img');
+      expect(img?.getAttribute('src')).toBe(
+        'https://cdn.test.local/avatars/a.png'
+      );
+    });
+  });
+
+  it('drops the photo on sign-out so the next account does not inherit it', async () => {
+    renderWithProvider(<Navbar variant="student" userName="Casey H" />);
+    await screen.findByLabelText(/Account menu/);
+
+    act(() => setProfilePhoto('https://cdn.test.local/avatars/a.png'));
+    await waitFor(() => expect(document.querySelector('img')).not.toBeNull());
+
+    act(() => clearProfilePhoto());
+    await waitFor(() => expect(document.querySelector('img')).toBeNull());
   });
 });
