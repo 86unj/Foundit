@@ -54,6 +54,7 @@ vi.mock('../src/db', () => ({
 
 import { prisma } from '../src/db';
 import { writeAuditLog } from '../src/utils/auditLog';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 function createTestApp() {
   const app = express();
@@ -188,12 +189,28 @@ describe('users routes', () => {
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: 'student-1',
+        actorRole: 'student',
         action: 'user_profile_updated',
         entityType: 'user',
         entityId: 'student-1',
       }),
       prisma
     );
+
+    // The summary sentence names which fields changed, never the raw values.
+    const [call] = vi.mocked(writeAuditLog).mock.calls[0];
+    const summary = auditSummaries.user_profile_updated({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe(
+      'A student updated their profile (firstName, studentNumber).'
+    );
+    expect(summary).not.toContain('123456789');
   });
 
   test('PUT /api/users/me returns 409 when student number is taken', async () => {
@@ -250,12 +267,25 @@ describe('users routes', () => {
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: 'student-1',
+        actorRole: 'student',
         action: 'user_notification_preferences_updated',
         entityType: 'user',
         entityId: 'student-1',
       }),
       tx
     );
+
+    // The summary sentence never echoes the opt-in value or any personal data.
+    const [call] = vi.mocked(writeAuditLog).mock.calls[0];
+    const summary = auditSummaries.user_notification_preferences_updated({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe('A student updated their notification preferences.');
   });
 
   describe('PATCH /api/users/me/photo', () => {
@@ -310,6 +340,7 @@ describe('users routes', () => {
       expect(res.body.profilePhotoUrl).toBeNull();
       expect(writeAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
+          actorRole: 'student',
           action: 'user_profile_photo_updated',
           details: { operation: 'cleared' },
         }),

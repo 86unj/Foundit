@@ -73,7 +73,27 @@ import {
   signRefreshToken,
   hashTokenForStorage,
 } from '../src/utils/token';
-import { writeAuditLog, writeAuditLogBestEffort } from '../src/utils/auditLog';
+import {
+  writeAuditLog,
+  writeAuditLogBestEffort,
+  type AuditLogParams,
+} from '../src/utils/auditLog';
+import { auditSummaries } from '../src/utils/auditSummaries';
+
+// auditLog is mocked wholesale in this file, so the real summary-generation
+// logic never runs. Feed the params our route actually passed into the real
+// (unmocked) auditSummaries registry to prove the persisted summary would be
+// non-empty and free of secrets.
+function summaryFromCall(call: AuditLogParams): string {
+  return auditSummaries[call.action]({
+    actorType: call.actorType ?? 'anonymous',
+    actorRole: call.actorRole,
+    entityLabel: call.entityLabel,
+    outcome: call.outcome ?? 'success',
+    reasonCode: call.reasonCode ?? null,
+    details: call.details as Record<string, unknown> | undefined,
+  });
+}
 
 function createTestApp() {
   const app = express();
@@ -117,6 +137,15 @@ describe('POST /api/auth/login', () => {
         requestId: '11111111-1111-4111-8111-111111111111',
       })
     );
+
+    // No account was resolved, so no entityLabel — but a summary is still generated.
+    const call = vi.mocked(writeAuditLogBestEffort).mock.calls[0][0];
+    expect(call).not.toHaveProperty('entityLabel');
+    expect(call).not.toHaveProperty('actorRole');
+    const summary = summaryFromCall(call);
+    expect(summary.length).toBeGreaterThan(0);
+    expect(summary).not.toContain('student@myseneca.ca');
+    expect(JSON.stringify(call)).not.toContain('student@myseneca.ca');
   });
 
   test('returns 403 if account is inactive', async () => {

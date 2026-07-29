@@ -573,15 +573,18 @@ router.post(
           {
             actorId: req.user!.user_id,
             actorType: 'user',
+            actorRole: req.user!.role,
             action: 'item_created',
             entityType: 'item',
             entityId: created.itemId,
+            entityLabel: `${title} (${category})`,
             outcome: 'success',
             details: {
               category,
               campusId,
               dateFound: dateFound.toISOString().slice(0, 10),
               imageCount: images.length,
+              source: 'security_direct_intake',
             },
             ...createContext,
           },
@@ -786,6 +789,8 @@ router.patch(
         where: { itemId: params.data.itemId },
         select: {
           itemId: true,
+          title: true,
+          category: true,
           status: true,
           retentionExpiryDate: true,
         },
@@ -799,6 +804,8 @@ router.patch(
         return;
       }
 
+      const existingLabel = `${existing.title} (${existing.category})`;
+
       const { status: targetStatus, note } =
         req.body as UpdateSecurityItemStatusInput;
 
@@ -808,9 +815,11 @@ router.patch(
         await writeAuditLogBestEffort({
           actorId: req.user!.user_id,
           actorType: 'user',
+          actorRole: req.user!.role,
           action: 'item_status_denied',
           entityType: 'item',
           entityId: existing.itemId,
+          entityLabel: existingLabel,
           outcome: 'denied',
           reasonCode: 'invalid_status_transition',
           details: {
@@ -893,9 +902,11 @@ router.patch(
             {
               actorId: req.user!.user_id,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'item_status_updated',
               entityType: 'item',
               entityId: item.itemId,
+              entityLabel: `${item.title} (${item.category})`,
               outcome: 'success',
               details: {
                 previousStatus: existing.status,
@@ -912,9 +923,11 @@ router.patch(
               (claim): AuditLogParams => ({
                 actorId: req.user!.user_id,
                 actorType: 'user',
+                actorRole: req.user!.role,
                 action: 'claim_status_updated',
                 entityType: 'claim',
                 entityId: claim.claimId,
+                entityLabel: `${item.title} (${item.category})`,
                 outcome: 'success',
                 details: {
                   previousStatus: claim.status,
@@ -936,12 +949,17 @@ router.patch(
         await writeAuditLogBestEffort({
           actorId: req.user!.user_id,
           actorType: 'user',
+          actorRole: req.user!.role,
           action: 'item_status_denied',
           entityType: 'item',
           entityId: existing.itemId,
+          entityLabel: existingLabel,
           outcome: 'denied',
           reasonCode: 'approved_claim_conflict',
-          details: { requestedStatus: targetStatus },
+          details: {
+            previousStatus: existing.status,
+            requestedStatus: targetStatus,
+          },
           ...statusContext,
         });
         res.status(409).json({
@@ -1092,9 +1110,11 @@ router.patch(
           {
             actorId: req.user!.user_id,
             actorType: 'user',
+            actorRole: req.user!.role,
             action: 'item_updated',
             entityType: 'item',
             entityId: item.itemId,
+            entityLabel: `${item.title} (${item.category})`,
             outcome: 'success',
             details: { changedFields },
             ...updateContext,
@@ -1234,9 +1254,11 @@ router.post(
           {
             actorId: actor.userId,
             actorType: 'user',
+            actorRole: req.user!.role,
             action: 'item_walk_in_released',
             entityType: 'item',
             entityId: updated.itemId,
+            entityLabel: `${updated.title} (${updated.category})`,
             outcome: 'success',
             details: {
               releaseType: 'walk_in_no_claim',

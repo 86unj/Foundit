@@ -14,6 +14,8 @@ export async function refreshClaimMatchSuggestions(
   audit?: {
     actorId?: string;
     actorType: 'user' | 'system';
+    actorRole?: 'student' | 'security' | 'admin';
+    entityLabel?: string;
     requestId?: string;
     runId?: string;
     ipAddress?: string;

@@ -3,6 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import itemsRouter from '../src/routes/items';
 import { ItemStatus } from '@prisma/client';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 const mocks = vi.hoisted(() => ({
   authUser: { user_id: 'security-1', role: 'security' } as {
@@ -255,11 +256,16 @@ describe('items routes', () => {
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: 'security-1',
+        actorRole: 'security',
         action: 'item_created',
         entityId: itemId,
+        entityLabel: 'iPhone (Electronics)',
         outcome: 'success',
         requestId: '11111111-1111-4111-8111-111111111111',
-        details: expect.objectContaining({ imageCount: 0 }),
+        details: expect.objectContaining({
+          imageCount: 0,
+          source: 'security_direct_intake',
+        }),
       }),
       tx
     );
@@ -296,6 +302,8 @@ describe('items routes', () => {
       expect.objectContaining({
         action: 'item_updated',
         entityId: itemId,
+        actorRole: 'security',
+        entityLabel: 'iPhone (Electronics)',
         details: {
           changedFields: [
             'title',
@@ -311,6 +319,22 @@ describe('items routes', () => {
     expect(JSON.stringify(vi.mocked(writeAuditLog).mock.calls)).not.toContain(
       'Private description'
     );
+
+    // The generated summary should name the changed fields, not restate the
+    // full record (e.g. the private description text must never appear).
+    const call = vi.mocked(writeAuditLog).mock.calls[0][0];
+    const summary = auditSummaries.item_updated({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toContain(
+      'title, category, dateFound, locationFound, descriptionInternal'
+    );
+    expect(summary).not.toContain('Private description');
   });
 
   test('PATCH /api/items/:itemId/status audits item and affected claims together', async () => {

@@ -262,6 +262,7 @@ router.put(
             {
               actorId: userId,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'user_profile_updated',
               entityType: 'user',
               entityId: userId,
@@ -356,6 +357,7 @@ router.patch(
         await writeAuditLog(
           {
             actorId: userId,
+            actorRole: req.user!.role,
             action: 'user_notification_preferences_updated',
             entityType: 'user',
             entityId: userId,
@@ -454,6 +456,7 @@ router.patch(
           {
             actorId: userId,
             actorType: 'user',
+            actorRole: req.user!.role,
             action: 'user_profile_photo_updated',
             entityType: 'user',
             entityId: userId,

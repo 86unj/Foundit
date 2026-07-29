@@ -4,6 +4,16 @@
 
 All request-driven events use the server-generated request ID and `req.ip`. Job events use one generated run ID per invocation. Detail objects are allowlisted by the owning call site and rejected when they contain credential, token, URL, object-key, filename, email, phone, student-number, message-body, or provider-payload keys.
 
+## Human-readable enrichment
+
+Every write is enriched with three fields before persistence, computed centrally in `toAuditData()` (`src/utils/auditLog.ts`) from a per-action registry (`src/utils/auditSummaries.ts`):
+
+- `details.actorRole` (`student` | `security` | `admin`) — present only when the call site supplies an authenticated actor's role. System and anonymous writes never fabricate one.
+- `details.entityLabel` — a short human-readable name for the entity the record concerns (item title/category, claim item name, campus, etc.), supplied by the call site from data already in scope. Never a URL, object key, filename, or personal field.
+- `details.summary` — a one-line generated sentence describing the event, present on every record.
+
+These three keys bypass each action's own `detailKeys` allowlist by design (they are supplied as dedicated `AuditLogParams` fields, not as caller-supplied `details` entries), so adding them required no changes to the ~40 action definitions above. A dedicated test (`tests/auditCoverage.test.ts`) fails if a future action is added without a matching entry in the summary registry.
+
 | Actions                                                                           | Actor source                                                  | Entity                    | Policy               | Safe detail contract                                                   | Owning tests                                                           |
 | --------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------- | -------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `user_registered`, `user_registration_rolled_back`, `user_login`                  | Anonymous requester for registration; verified user for login | user                      | Required             | Result/reason only                                                     | `auth.login.integration`, `auth.extra.integration`                     |

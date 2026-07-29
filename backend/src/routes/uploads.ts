@@ -133,6 +133,7 @@ router.post('/presigned-url', authenticate, async (req, res, next) => {
     await writeAuditLogBestEffort({
       actorId: req.user!.user_id,
       actorType: 'user',
+      actorRole: req.user!.role,
       action: 'upload_authorized',
       entityType: 'upload',
       entityId: null,

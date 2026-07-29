@@ -94,6 +94,8 @@ vi.mock('../src/db', () => ({
 import { prisma } from '../src/db';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { generateReportLinkToken } from '../src/utils/reportLinkToken';
+import { writeAuditLog, writeAuditLogBestEffort } from '../src/utils/auditLog';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 function createTestApp() {
   const app = express();
@@ -174,6 +176,16 @@ describe('photoSessions routes', () => {
     expect(res.status).toBe(201);
     expect(res.body.token).toBe(token);
     expect(res.body.expiresAt).toBe('2026-07-06T06:00:00.000Z');
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'security-1',
+        actorRole: 'security',
+        action: 'photo_session_created',
+        entityType: 'photo_session',
+        entityId: sessionId,
+      }),
+      prisma
+    );
   });
 
   test('GET /api/photo-sessions/:token/validate returns available session', async () => {
@@ -263,6 +275,30 @@ describe('photoSessions routes', () => {
     );
     expect(res.body.fileType).toBe('png');
     expect(res.body.fileSizeKb).toBe(500);
+
+    // Anonymous walk-in upload: no actorRole, but the entity label names the
+    // session (never the requester) and a summary is always generated.
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorType: 'anonymous',
+        action: 'photo_upload_authorized',
+        entityId: sessionId,
+        entityLabel: `photo session ${sessionId}`,
+      })
+    );
+    const [call] = vi.mocked(writeAuditLogBestEffort).mock.calls[0];
+    expect(call.actorRole).toBeUndefined();
+    const summary = auditSummaries.photo_upload_authorized({
+      actorType: 'anonymous',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe(
+      `A photo upload (photo session ${sessionId}) was authorized via a walk-in session.`
+    );
   });
 
   test('POST /api/photo-sessions/:token/images returns 404 if pending image is missing', async () => {
@@ -316,6 +352,30 @@ describe('photoSessions routes', () => {
     expect(res.body.imageUrl).toBe(
       'reports/550e8400-e29b-41d4-a716-446655440000.png'
     );
+
+    // Anonymous walk-in registration: no actorRole, but the entity label names
+    // the session (never the requester) and a summary is always generated.
+    expect(writeAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorType: 'anonymous',
+        action: 'photo_image_registered',
+        entityId: 'image-1',
+        entityLabel: `photo session ${sessionId}`,
+      })
+    );
+    const [call] = vi.mocked(writeAuditLog).mock.calls[0];
+    expect(call.actorRole).toBeUndefined();
+    const summary = auditSummaries.photo_image_registered({
+      actorType: 'anonymous',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe(
+      `A photo (photo session ${sessionId}) was registered to a walk-in session.`
+    );
   });
 
   test('GET /api/photo-sessions/:token/images returns 403 if session belongs to another user', async () => {
@@ -331,6 +391,32 @@ describe('photoSessions routes', () => {
 
     expect(res.status).toBe(403);
     expect(res.body.code).toBe('FORBIDDEN');
+
+    // The denial write is no longer empty: it now carries an actor role and a
+    // non-PII entity label (session id, never the requester's contact info).
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: 'security-1',
+        actorRole: 'security',
+        action: 'photo_session_access_denied',
+        entityId: sessionId,
+        entityLabel: `photo session ${sessionId}`,
+        outcome: 'denied',
+        reasonCode: 'session_ownership_mismatch',
+      })
+    );
+    const [call] = vi.mocked(writeAuditLogBestEffort).mock.calls[0];
+    const summary = auditSummaries.photo_session_access_denied({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'denied',
+      reasonCode: call.reasonCode ?? null,
+      details: call.details as Record<string, unknown> | undefined,
+    });
+    expect(summary).toBe(
+      `A photo session access attempt (photo session ${sessionId}) was denied.`
+    );
   });
 
   test('GET /api/photo-sessions/:token/images returns images', async () => {

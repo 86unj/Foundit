@@ -23,6 +23,7 @@ export interface StudentClaimEmailTarget {
   claimId: string;
   studentId: string;
   notificationPreference: ClaimNotificationPreference;
+  itemName?: string | null;
   student: {
     firstName: string;
     lastName: string;
@@ -33,6 +34,7 @@ export interface StudentClaimEmailTarget {
 
 interface StudentClaimEmailContext {
   actorId?: string;
+  role?: 'student' | 'security' | 'admin';
   ipAddress?: string;
   requestId?: string;
   event: string;
@@ -63,12 +65,14 @@ async function recordStudentClaimEmailAudit(
   await writeAuditLogBestEffort({
     actorId: context.actorId,
     actorType: context.actorId ? 'user' : 'anonymous',
+    actorRole: context.role,
     action:
       status === 'sent'
         ? 'claim_email_notification_sent'
         : 'claim_email_notification_failed',
     entityType: 'notification',
     entityId: notification.notificationId,
+    entityLabel: claim.itemName ?? undefined,
     outcome: status === 'sent' ? 'success' : 'failure',
     reasonCode: status === 'failed' ? 'email_delivery_failed' : null,
     details: {

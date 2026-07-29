@@ -15,6 +15,8 @@ import {
   writeAuditLog,
   writeAuditLogBestEffort,
 } from '../src/utils/auditLog';
+import { auditEvents } from '../src/utils/auditEvents';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 describe('audit log helper', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -135,4 +137,102 @@ describe('audit log helper', () => {
       ).rejects.toThrow(/prohibited audit detail/i);
     }
   );
+});
+
+describe('audit detail enrichment', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  test('every catalog action has a summary registry entry', () => {
+    expect(Object.keys(auditSummaries).sort()).toEqual(
+      Object.keys(auditEvents).sort()
+    );
+  });
+
+  test('merges actorRole, entityLabel, and a generated summary into details', async () => {
+    vi.mocked(prisma.auditLog.create).mockResolvedValueOnce({
+      logId: 'log-1',
+    } as never);
+
+    await writeAuditLog({
+      actorType: 'user',
+      actorId: '83cc0e8c-2a1e-4d69-864c-d3f374b105a6',
+      actorRole: 'security',
+      action: 'item_status_updated',
+      entityType: 'item',
+      entityId: '5a1a4b2a-6c1a-4a1a-9a1a-6c1a4a1a9a1a',
+      entityLabel: 'Blue backpack (electronics)',
+      outcome: 'success',
+      details: { previousStatus: 'stored', nextStatus: 'claimed' },
+    });
+
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        details: expect.objectContaining({
+          previousStatus: 'stored',
+          nextStatus: 'claimed',
+          actorRole: 'security',
+          entityLabel: 'Blue backpack (electronics)',
+          summary: expect.any(String),
+        }),
+      }),
+    });
+  });
+
+  test('still rejects an unrelated key not in the action detailKeys allowlist', async () => {
+    await expect(
+      writeAuditLog({
+        actorType: 'user',
+        actorId: '83cc0e8c-2a1e-4d69-864c-d3f374b105a6',
+        actorRole: 'security',
+        action: 'item_status_updated',
+        entityType: 'item',
+        entityId: '5a1a4b2a-6c1a-4a1a-9a1a-6c1a4a1a9a1a',
+        outcome: 'success',
+        details: { previousStatus: 'stored', unrelatedKey: 'nope' },
+      })
+    ).rejects.toThrow('Audit detail is not allowed');
+
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  test('generates a summary even when details are sparse or absent', async () => {
+    vi.mocked(prisma.auditLog.create).mockResolvedValueOnce({
+      logId: 'log-1',
+    } as never);
+
+    await writeAuditLog({
+      actorType: 'user',
+      actorId: '83cc0e8c-2a1e-4d69-864c-d3f374b105a6',
+      actorRole: 'security',
+      action: 'item_created',
+      entityType: 'item',
+      entityId: '5a1a4b2a-6c1a-4a1a-9a1a-6c1a4a1a9a1a',
+      outcome: 'success',
+    });
+
+    expect(prisma.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        details: expect.objectContaining({ summary: expect.any(String) }),
+      }),
+    });
+  });
+
+  test('omits actorRole entirely when the caller does not supply one', async () => {
+    vi.mocked(prisma.auditLog.create).mockResolvedValueOnce({
+      logId: 'log-1',
+    } as never);
+
+    await writeAuditLog({
+      actorType: 'system',
+      action: 'unverified_user_deleted',
+      entityType: 'user',
+      entityId: '83cc0e8c-2a1e-4d69-864c-d3f374b105a6',
+      outcome: 'success',
+      runId: '4cc23c6c-6d08-49e3-924d-926448fb7a64',
+    });
+
+    const call = vi.mocked(prisma.auditLog.create).mock.calls[0]?.[0];
+    expect(call?.data.details).not.toHaveProperty('actorRole');
+    expect(call?.data.details).not.toHaveProperty('entityLabel');
+  });
 });
