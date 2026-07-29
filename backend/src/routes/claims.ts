@@ -774,6 +774,7 @@ router.post(
             actorId: actor.userId,
             actorType: 'user',
             actorRole: actor.role,
+            entityLabel: payload.itemName ?? undefined,
             ...auditContext,
           }
         );
@@ -1130,6 +1131,7 @@ router.delete(
             actorId: actor.userId,
             actorType: 'user',
             actorRole: actor.role,
+            entityLabel: claim.itemName ?? undefined,
             ...deleteContext,
           }
         );

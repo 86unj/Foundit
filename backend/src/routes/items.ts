@@ -927,6 +927,7 @@ router.patch(
                 action: 'claim_status_updated',
                 entityType: 'claim',
                 entityId: claim.claimId,
+                entityLabel: `${item.title} (${item.category})`,
                 outcome: 'success',
                 details: {
                   previousStatus: claim.status,
