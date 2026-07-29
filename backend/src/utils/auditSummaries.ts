@@ -10,7 +10,9 @@ export interface AuditSummaryContext {
 }
 
 function str(value: unknown): string {
-  return value === undefined || value === null ? '' : String(value);
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) return value.map(String).join(', ');
+  return String(value);
 }
 
 function actorPhrase(ctx: AuditSummaryContext): string {
