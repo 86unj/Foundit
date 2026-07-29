@@ -94,10 +94,7 @@ vi.mock('../src/db', () => ({
 import { prisma } from '../src/db';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { generateReportLinkToken } from '../src/utils/reportLinkToken';
-import {
-  writeAuditLog,
-  writeAuditLogBestEffort,
-} from '../src/utils/auditLog';
+import { writeAuditLog, writeAuditLogBestEffort } from '../src/utils/auditLog';
 import { auditSummaries } from '../src/utils/auditSummaries';
 
 function createTestApp() {
