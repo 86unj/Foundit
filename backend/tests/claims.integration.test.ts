@@ -631,6 +631,17 @@ describe('claims routes', () => {
       });
 
     expect(res.status).toBe(200);
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        recipientId: 'student-1',
+        type: 'claim_status_update',
+        title: 'Claim status updated: rejected',
+        message: notification.message,
+        referenceType: 'claim',
+        referenceId: claimRow.claimId,
+      }),
+      select: expect.anything(),
+    });
     expect(sendNotificationEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'student@myseneca.ca',
@@ -725,6 +736,17 @@ describe('claims routes', () => {
       .send({ status: 'picked_up' });
 
     expect(res.status).toBe(200);
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        recipientId: 'student-1',
+        type: 'claim_status_update',
+        title: 'Claim status updated: picked up',
+        message: notification.message,
+        referenceType: 'claim',
+        referenceId: claimRow.claimId,
+      }),
+      select: expect.anything(),
+    });
     expect(sendNotificationEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'student@myseneca.ca',
@@ -780,6 +802,17 @@ describe('claims routes', () => {
       .send({ status: 'approved' });
 
     expect(res.status).toBe(200);
+    expect(tx.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        recipientId: 'student-1',
+        type: 'claim_status_update',
+        title: 'Claim status updated: approved',
+        message: notification.message,
+        referenceType: 'claim',
+        referenceId: claimRow.claimId,
+      }),
+      select: expect.anything(),
+    });
     const auditRows = tx.auditLog.create.mock.calls.map(
       ([input]) => input.data
     );
