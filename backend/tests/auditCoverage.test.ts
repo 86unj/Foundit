@@ -4,6 +4,7 @@ import {
   auditEvents,
   prohibitedAuditDetailKeys,
 } from '../src/utils/auditEvents';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 const registry = readFileSync(
   new URL('../docs/audit-events.md', import.meta.url),
@@ -71,5 +72,20 @@ describe('audit event coverage registry', () => {
     expect(registry).toContain('Notification read, unread, and read-all');
     expect(registry).toContain('501 NOT_IMPLEMENTED');
     expect(registry).toContain('Audit-log query, export, download, UI');
+  });
+
+  test('every typed action has a human-readable summary registry entry', () => {
+    for (const action of Object.keys(auditEvents)) {
+      expect(auditSummaries).toHaveProperty(action);
+      expect(typeof auditSummaries[action as keyof typeof auditSummaries]).toBe(
+        'function'
+      );
+    }
+  });
+
+  test('documents the actorRole/entityLabel/summary enrichment fields', () => {
+    expect(registry).toContain('actorRole');
+    expect(registry).toContain('entityLabel');
+    expect(registry).toContain('summary');
   });
 });
