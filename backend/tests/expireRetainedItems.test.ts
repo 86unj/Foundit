@@ -29,6 +29,7 @@ function createTx() {
           claimId: '550e8400-e29b-41d4-a716-446655440000',
           studentId: 'student-1',
           itemName: 'iPhone 15',
+          itemId: 'item-1',
         },
       ]),
       updateMany: vi.fn(),
@@ -93,15 +94,25 @@ describe('expireDueItems notifications', () => {
           actorType: 'system',
           entityId: 'item-1',
           runId: expect.any(String),
+          details: expect.objectContaining({
+            entityLabel: expect.stringContaining('campus-1'),
+          }),
         }),
         expect.objectContaining({
           action: 'claim_status_updated',
           actorType: 'system',
           entityId: '550e8400-e29b-41d4-a716-446655440000',
           runId: expect.any(String),
+          details: expect.objectContaining({
+            itemId: 'item-1',
+            entityLabel: 'iPhone 15',
+          }),
         }),
       ])
     );
+    expect(
+      auditRows.every((row) => !('actorRole' in (row.details ?? {})))
+    ).toBe(true);
     expect(new Set(auditRows.map((row) => row.runId))).toHaveProperty(
       'size',
       1

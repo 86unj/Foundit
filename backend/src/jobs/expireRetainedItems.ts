@@ -116,6 +116,7 @@ export async function expireDueItems(): Promise<number> {
         studentId: true,
         itemName: true,
         status: true,
+        itemId: true,
       },
     });
 
@@ -176,9 +177,11 @@ export async function expireDueItems(): Promise<number> {
         outcome: 'success',
         reasonCode: 'item_retention_expired',
         runId,
+        entityLabel: claim.itemName ?? undefined,
         details: {
           previousStatus: claim.status,
           nextStatus: ClaimStatus.rejected,
+          itemId: claim.itemId,
         },
       })),
       tx
@@ -214,6 +217,11 @@ export async function expireDueItems(): Promise<number> {
         entityId: item.itemId,
         outcome: 'success',
         runId,
+        entityLabel: `campus ${item.campusId}${
+          item.retentionExpiryDate
+            ? `, retention expired ${item.retentionExpiryDate.toISOString().slice(0, 10)}`
+            : ''
+        }`,
         details: {
           previousStatus: ItemStatus.stored,
           nextStatus: ItemStatus.expired,
