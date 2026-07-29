@@ -49,6 +49,8 @@ export async function fanOutToCampusSecurity(
   audit?: {
     actorId?: string | null;
     actorType: 'user' | 'system';
+    actorRole?: 'student' | 'security' | 'admin';
+    entityLabel?: string;
     requestId?: string;
     runId?: string;
     ipAddress?: string;
