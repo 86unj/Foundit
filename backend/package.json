@@ -10,7 +10,8 @@
     "lint": "eslint src",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "backfill:embeddings": "tsx src/scripts/backfillEmbeddings.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1065.0",

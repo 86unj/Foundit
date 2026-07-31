@@ -12,7 +12,8 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
 /**
  * Error thrown by apiFetch (and authFetch session failures).
  * `status` is the HTTP status; 0 means the request never reached the server
- * (missing configuration or network failure) and `message` says which.
+ * (missing configuration or network failure) and `code` says which.
+ * `message` is user-facing — keep configuration details out of it.
  */
 export class ApiError extends Error {
   readonly status: number;
@@ -176,9 +177,15 @@ export async function apiFetch<T>(
   init: ApiFetchInit = {}
 ): Promise<T> {
   if (!API_BASE) {
+    // Config detail stays in the dev console — users get a plain message.
+    debugError(
+      'api',
+      `${init.method ?? 'GET'} ${path} aborted — NEXT_PUBLIC_API_URL is empty. Set it in foundit-ui/.env.local.`
+    );
     throw new ApiError(
       0,
-      'API URL is not configured. Set NEXT_PUBLIC_API_URL in foundit-ui/.env.local.'
+      'Service is temporarily unavailable. Please try again later or contact support.',
+      'API_NOT_CONFIGURED'
     );
   }
 

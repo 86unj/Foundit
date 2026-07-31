@@ -33,10 +33,15 @@ async function saveSearchIndex(
   });
 }
 
+/**
+ * Computes and persists a claim's search text + embedding, returning the
+ * embedding so callers that need it immediately do not have to re-read the row
+ * (or, worse, recompute it).
+ */
 export async function ingestClaimSearchIndex(
   claimId: string,
   input?: ClaimSearchInput
-) {
+): Promise<number[] | null> {
   const claim =
     input ??
     (await prisma.claim.findUnique({
@@ -51,18 +56,20 @@ export async function ingestClaimSearchIndex(
     }));
 
   if (!claim) {
-    return;
+    return null;
   }
 
   const searchText = buildClaimSearchText(claim);
   const embedding = await embedText(searchText);
   await saveSearchIndex('claim', claimId, searchText, embedding);
+  return embedding;
 }
 
+/** Item counterpart of {@link ingestClaimSearchIndex}. */
 export async function ingestItemSearchIndex(
   itemId: string,
   input?: ItemSearchInput
-) {
+): Promise<number[] | null> {
   const item =
     input ??
     (await prisma.item.findUnique({
@@ -79,12 +86,13 @@ export async function ingestItemSearchIndex(
     }));
 
   if (!item) {
-    return;
+    return null;
   }
 
   const searchText = buildItemSearchText(item);
   const embedding = await embedText(searchText);
   await saveSearchIndex('item', itemId, searchText, embedding);
+  return embedding;
 }
 
 function logIngestFailure(
