@@ -3,20 +3,15 @@
 import { Grid, Heading, Separator, Stack } from '@chakra-ui/react';
 import { DetailImageGallery } from '@/components/DetailImageGallery';
 import type { SecurityClaimDetail } from '@/types/claims';
-import {
-  formatClaimDate,
-  formatNotificationPreference,
-  getClaimItemName,
-} from '@/utils/claimDisplay';
+import { formatClaimDate, getClaimItemName } from '@/utils/claimDisplay';
 import { ClaimCard } from './ClaimCard';
 import { ClaimDetailField } from './ClaimDetailField';
 
 interface ClaimDetailsCardProps {
   claim: SecurityClaimDetail;
-  campusName: string;
 }
 
-export function ClaimDetailsCard({ claim, campusName }: ClaimDetailsCardProps) {
+export function ClaimDetailsCard({ claim }: ClaimDetailsCardProps) {
   const studentName = `${claim.student.firstName} ${claim.student.lastName}`;
   const itemName = getClaimItemName(claim);
   const hasImages = claim.images.length > 0;
@@ -39,11 +34,6 @@ export function ClaimDetailsCard({ claim, campusName }: ClaimDetailsCardProps) {
             }
           />
           <ClaimDetailField label="Email" value={claim.student.email} />
-          <ClaimDetailField label="Campus" value={campusName} />
-          <ClaimDetailField
-            label="Notification Preferences"
-            value={formatNotificationPreference(claim.notificationPreference)}
-          />
         </Grid>
 
         <Separator borderColor="gray.200" />
