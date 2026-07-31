@@ -18,9 +18,11 @@ re-running Terraform.
 ## One-time manual prerequisites
 
 1. **GitHub deploy key** (repo is private): generate a dedicated keypair —
+
    ```bash
    ssh-keygen -t ed25519 -f foundit-deploy-key -N ""
    ```
+
    Add `foundit-deploy-key.pub` to the `86unj/Foundit` repo under
    **Settings → Deploy keys → Add deploy key** (leave "Allow write access"
    unchecked — read-only). Put the contents of `foundit-deploy-key` (the
@@ -72,7 +74,7 @@ foundit-api.garychang1214.com` resolve to the static IP and re-run the
 - `terraform output frontend_url` / `api_url` — confirm both load over
   HTTPS.
 - `terraform output -raw ssh_private_key_pem > foundit-app-key.pem && chmod
-  600 foundit-app-key.pem` — save the instance's SSH key locally to log in
+600 foundit-app-key.pem` — save the instance's SSH key locally to log in
   (`ssh -i foundit-app-key.pem root@$(terraform output -raw static_ip)`).
 - Once TLS is confirmed working, you can flip `proxied = false` to `true`
   on the two `cloudflare_record` resources in `main.tf` and re-apply to put
