@@ -471,7 +471,7 @@ function createMatchFoundNotificationInput(claim: {
   return {
     recipientId: claim.studentId,
     type: NotificationType.match_found,
-    title: 'Your matched item is ready for pickup',
+    title: 'A match was found for your claim',
     message: `A found item has been matched to your claim. Visit ${officeLocation} with your student ID during office hours to collect it.`,
     referenceType: 'claim',
     referenceId: claim.claimId,
