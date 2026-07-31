@@ -79,9 +79,17 @@ foundit-api.garychang1214.com` resolve to the static IP and re-run the
 
 - `terraform output frontend_url` / `api_url` — confirm both load over
   HTTPS.
-- `terraform output -raw ssh_private_key_pem > foundit-app-key.pem && chmod
-600 foundit-app-key.pem` — save the instance's SSH key locally to log in
-  (`ssh -i foundit-app-key.pem root@$(terraform output -raw static_ip)`).
+- Save the instance's SSH key locally to log in. The output is named
+  `ssh_private_key_openssh` (see `outputs.tf`), and the login user on an
+  Ubuntu Lightsail blueprint is `ubuntu` — root SSH is disabled, so use
+  `sudo` once you are in:
+
+  ```bash
+  terraform output -raw ssh_private_key_openssh > foundit-app-key.pem
+  chmod 600 foundit-app-key.pem
+  ssh -i foundit-app-key.pem ubuntu@$(terraform output -raw static_ip)
+  ```
+
 - Once TLS is confirmed working, you can flip `proxied = false` to `true`
   on the two `cloudflare_record` resources in `main.tf` and re-apply to put
   the domains behind Cloudflare's proxy (CDN/DDoS protection). **If you do,
@@ -100,8 +108,8 @@ Terraform only re-runs it if the instance is replaced. Every change below
 therefore has to be applied by hand, once, to the live instance. Until then
 the corresponding fix is inert while CI still reports green.
 
-SSH in as root (`ssh -i foundit-app-key.pem root@$(terraform output -raw static_ip)`)
-and run:
+SSH in (`ssh -i foundit-app-key.pem ubuntu@$(terraform output -raw static_ip)`)
+and run each block below with `sudo`:
 
 1. **Replace the deploy script with the shim** — do this _after_ the change is
    merged to `main`, so the pull can find `infra/deploy/redeploy.sh`. Without
