@@ -209,17 +209,16 @@ export function ClaimDetailModal({
                       showRejected) && (
                       <Stack gap={3}>
                         {showPickupInstructions && (
-                          <StatusNotice title="Ready for Pickup" palette="blue">
+                          <StatusNotice title="Match Found" palette="blue">
                             <Text>
-                              Your matched item ({claim.item?.title ?? 'item'})
-                              is ready to collect at the{' '}
+                              A match was found for your claim (
+                              {claim.item?.title ?? 'item'}). Visit the{' '}
                               {claim.item?.campus.campusName ?? 'campus'}{' '}
-                              security office.
+                              security office with your student ID.
                             </Text>
                             <Text>
-                              Bring your student ID and visit during office
-                              hours. Security will verify your identity before
-                              releasing the item.
+                              Staff will verify your identity before releasing
+                              the item. Please visit during office hours.
                             </Text>
                           </StatusNotice>
                         )}
