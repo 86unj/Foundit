@@ -1,3 +1,5 @@
+import { logger } from '../logger';
+
 const EMBEDDING_DIMENSIONS = 1536;
 const OPENROUTER_API_URL =
   process.env.OPENROUTER_API_URL ?? 'https://openrouter.ai/api/v1';
@@ -83,6 +85,36 @@ async function embedWithOpenRouter(
   return normalizeVector(embedding);
 }
 
+/**
+ * True when no OPENROUTER_API_KEY is configured, which means embedText() hands
+ * back a deterministic hash vector instead of a real semantic one. Matching
+ * keeps "working" in that state, but the ranking carries no meaning — so this
+ * predicate exists to make the degradation checkable instead of invisible.
+ */
+export function isSemanticMatchingDegraded(
+  env: NodeJS.ProcessEnv = process.env
+): boolean {
+  return !env.OPENROUTER_API_KEY?.trim();
+}
+
+let degradationWarned = false;
+
+/**
+ * Logs the hash-fallback warning at most once per process. Called at startup
+ * and again on first fallback use; the fallback itself is left untouched
+ * because local development legitimately depends on it.
+ */
+export function warnIfSemanticMatchingDegraded(): void {
+  if (degradationWarned || !isSemanticMatchingDegraded()) {
+    return;
+  }
+
+  degradationWarned = true;
+  logger.warn(
+    'OPENROUTER_API_KEY is not set: semantic matching is DEGRADED. Embeddings fall back to a local hash vector, so match suggestions are close to random. Set OPENROUTER_API_KEY and run `pnpm backfill:embeddings` to restore real semantic matching.'
+  );
+}
+
 export async function embedText(text: string): Promise<number[]> {
   const normalized = text.trim();
   if (!normalized) {
@@ -94,6 +126,7 @@ export async function embedText(text: string): Promise<number[]> {
     return embedWithOpenRouter(normalized, apiKey);
   }
 
+  warnIfSemanticMatchingDegraded();
   return buildLocalEmbedding(normalized);
 }
 

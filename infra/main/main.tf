@@ -30,6 +30,7 @@ resource "aws_lightsail_instance" "app" {
     r2_access_key_id          = var.r2_access_key_id
     r2_secret_access_key      = var.r2_secret_access_key
     r2_endpoint               = var.r2_endpoint
+    r2_public_base_url        = var.r2_public_base_url
     smtp_host                 = var.smtp_host
     smtp_port                 = var.smtp_port
     smtp_user                 = var.smtp_user

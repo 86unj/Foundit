@@ -15,6 +15,22 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y nginx certbot python3-certbot-nginx git curl build-essential
 
+# --- Swap. The 2GB instance ships with none, and `next build` peaks above
+# what's free, so builds get OOM-killed. Written idempotently: re-running
+# this never duplicates the fstab entry or fails on an already-active swap. ---
+if [ -z "$(swapon --show --noheadings)" ]; then
+  if [ ! -f /swapfile ]; then
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+  fi
+  swapon /swapfile
+  # Inside the guard on purpose: if some other swap device is already active
+  # we never create /swapfile, and an fstab entry pointing at a file that
+  # does not exist makes `swapon -a` fail on the next boot.
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 # --- Node.js 22.x + pnpm + PM2 ---
 # pnpm 11.x requires Node >= 22.13 (it needs the node:sqlite builtin, only
 # added in Node 22) and crashes with ERR_UNKNOWN_BUILTIN_MODULE on Node 20.
@@ -64,6 +80,9 @@ R2_BUCKET=${r2_bucket}
 R2_ACCESS_KEY_ID=${r2_access_key_id}
 R2_SECRET_ACCESS_KEY=${r2_secret_access_key}
 R2_ENDPOINT=${r2_endpoint}
+# Empty is a supported value: the backend then signs a temporary GET URL per
+# image instead of building a stable public one. See infra/main/README.md.
+R2_PUBLIC_BASE_URL=${r2_public_base_url}
 OPENROUTER_API_KEY=${openrouter_api_key}
 ENV_EOF
 chmod 600 /opt/foundit/backend/.env
@@ -141,6 +160,13 @@ server {
 
     location / {
         proxy_pass http://127.0.0.1:3001;
+        # Generating match suggestions on a cold embedding cache makes several
+        # outbound OpenRouter calls before responding, which overruns Nginx's
+        # 60s default proxy_read_timeout and turns into a 504. The backend caps
+        # that work per request; this ceiling covers the capped worst case.
+        proxy_connect_timeout 10s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -162,14 +188,16 @@ certbot --nginx \
   -d ${api_domain} \
   --non-interactive --agree-tos -m ${letsencrypt_email} --redirect
 
-# --- Helper script for future manual redeploys (not Terraform-managed) ---
+# --- Deploy entrypoint. This file is baked onto the box at first boot and
+# never updates itself, so it is deliberately a shim: pull, then hand over to
+# the version-controlled script. All real deploy logic lives in the repo at
+# infra/deploy/redeploy.sh and therefore ships with an ordinary push — do not
+# grow this heredoc. ---
 cat > /opt/foundit/redeploy.sh <<'REDEPLOY_EOF'
 #!/bin/bash
-set -eux
+set -eu
 cd /opt/foundit
 git pull
-cd backend && pnpm install && pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm build
-cd ../foundit-ui && pnpm install && pnpm build
-pm2 restart all
+exec /opt/foundit/infra/deploy/redeploy.sh
 REDEPLOY_EOF
 chmod +x /opt/foundit/redeploy.sh

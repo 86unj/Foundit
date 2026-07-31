@@ -22,6 +22,10 @@ smtp_pass = ""
 # Optional — leave blank to fall back to local hash embeddings.
 openrouter_api_key = ""
 
+# Optional — public base URL of the R2 bucket (r2.dev or custom domain, no
+# trailing slash). Leave blank to fall back to presigned image URLs.
+r2_public_base_url = ""
+
 # Public key for the dedicated GitHub Actions CD identity (not secret — only
 # the matching private key, stored as a GitHub Actions secret, grants access).
 cd_ssh_public_key = ""

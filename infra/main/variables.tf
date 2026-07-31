@@ -152,3 +152,12 @@ variable "openrouter_api_key" {
   sensitive   = true
   default     = ""
 }
+
+# --- Non-secret and optional. Not grouped with the R2 credentials above on
+# purpose: this is a public hostname, not a secret. ---
+
+variable "r2_public_base_url" {
+  description = "Optional public base URL for the R2 bucket (an r2.dev domain or a custom domain, no trailing slash), e.g. https://images.garychang1214.com. When set, backend/src/utils/imageUrl.ts builds stable, cacheable image URLs from it. Leave empty to fall back to signing a per-image presigned GET URL, which still works but expires (R2_SIGNED_URL_TTL_SECONDS, default 24h) and cannot be cached."
+  type        = string
+  default     = ""
+}
