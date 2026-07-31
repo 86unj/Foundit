@@ -74,7 +74,7 @@ export const createSecurityItemSchema = z.object({
     .refine((value) => value <= getTodayAtMidnight(), {
       message: 'dateFound cannot be in the future',
     }),
-  images: z.array(reportImageSchema).max(10).optional().default([]),
+  images: z.array(reportImageSchema).min(1).max(10),
 });
 
 export type CreateSecurityItemInput = z.infer<typeof createSecurityItemSchema>;
