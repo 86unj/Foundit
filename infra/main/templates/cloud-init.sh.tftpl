@@ -36,6 +36,15 @@ ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
 
 git clone ${github_repo_ssh_url} /opt/foundit
 
+# --- Dedicated public key for GitHub Actions CD. Separate identity from the
+# admin key above: this one only ever needs to SSH in as ubuntu and run
+# redeploy.sh, so it's added to ubuntu's authorized_keys, not root's. ---
+mkdir -p /home/ubuntu/.ssh
+echo "${cd_ssh_public_key}" >> /home/ubuntu/.ssh/authorized_keys
+chown -R ubuntu:ubuntu /home/ubuntu/.ssh
+chmod 700 /home/ubuntu/.ssh
+chmod 600 /home/ubuntu/.ssh/authorized_keys
+
 # --- Backend env (values come from Terraform variables, sourced from
 # terraform.tfvars, not hardcoded) ---
 cat > /opt/foundit/backend/.env <<'ENV_EOF'

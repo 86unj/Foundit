@@ -48,6 +48,11 @@ variable "github_repo_ssh_url" {
   default     = "git@github.com:86unj/Foundit.git"
 }
 
+variable "cd_ssh_public_key" {
+  description = "Public key for the dedicated GitHub Actions CD identity. Appended to ubuntu's authorized_keys so the deploy workflow can SSH in and run /opt/foundit/redeploy.sh. Not secret — only the matching private key (stored as a GitHub Actions secret, never here) grants access."
+  type        = string
+}
+
 # --- Secrets: no defaults, must be supplied via terraform.tfvars (gitignored) ---
 
 variable "cloudflare_api_token" {
