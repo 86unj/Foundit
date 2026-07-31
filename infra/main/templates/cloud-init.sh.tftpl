@@ -1,0 +1,166 @@
+#!/bin/bash
+# Rendered once by Terraform's templatefile() and run as Lightsail user_data
+# on first boot. This provisions the box from scratch: packages, Node/pnpm/
+# PM2, clones the private repo via a read-only deploy key, writes env files,
+# builds both apps, and configures Nginx + Let's Encrypt.
+#
+# This is a one-shot initial-provisioning script, not a CI/CD pipeline.
+# Re-running it (e.g. by editing user_data and replacing the instance) is
+# the only way Terraform re-triggers it; ongoing code updates go through
+# /opt/foundit/redeploy.sh instead (SSH in and run it by hand).
+set -eux
+export DEBIAN_FRONTEND=noninteractive
+
+# --- System packages ---
+apt-get update
+apt-get install -y nginx certbot python3-certbot-nginx git curl build-essential
+
+# --- Node.js 22.x + pnpm + PM2 ---
+# pnpm 11.x requires Node >= 22.13 (it needs the node:sqlite builtin, only
+# added in Node 22) and crashes with ERR_UNKNOWN_BUILTIN_MODULE on Node 20.
+# pnpm installed directly (not via corepack) so the repo's root
+# devEngines.packageManager pin (pnpm@11.0.9) can't override the version
+# actually used here.
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt-get install -y nodejs
+npm install -g pnpm@11.1.3 pm2
+
+# --- Read-only deploy key for cloning the private repo ---
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+cat > /root/.ssh/id_ed25519 <<'DEPLOY_KEY_EOF'
+${github_deploy_key_private}
+DEPLOY_KEY_EOF
+chmod 600 /root/.ssh/id_ed25519
+ssh-keyscan -H github.com >> /root/.ssh/known_hosts 2>/dev/null
+
+git clone ${github_repo_ssh_url} /opt/foundit
+
+# --- Backend env (values come from Terraform variables, sourced from
+# terraform.tfvars, not hardcoded) ---
+cat > /opt/foundit/backend/.env <<'ENV_EOF'
+NODE_ENV=production
+PORT=3001
+DATABASE_URL=${database_url}
+CORS_ORIGIN=https://${frontend_domain}
+FRONTEND_URL=https://${frontend_domain}
+APP_URL=https://${api_domain}
+JWT_ACCESS_SECRET=${jwt_access_secret}
+JWT_REFRESH_SECRET=${jwt_refresh_secret}
+SMTP_HOST=${smtp_host}
+SMTP_PORT=${smtp_port}
+SMTP_USER=${smtp_user}
+SMTP_PASS=${smtp_pass}
+R2_BUCKET=${r2_bucket}
+R2_ACCESS_KEY_ID=${r2_access_key_id}
+R2_SECRET_ACCESS_KEY=${r2_secret_access_key}
+R2_ENDPOINT=${r2_endpoint}
+OPENROUTER_API_KEY=${openrouter_api_key}
+ENV_EOF
+chmod 600 /opt/foundit/backend/.env
+
+# --- Frontend env. NEXT_PUBLIC_* is inlined into the client bundle at
+# `next build` time, so this must exist before the frontend build runs. ---
+cat > /opt/foundit/foundit-ui/.env.production <<'ENV_EOF'
+NEXT_PUBLIC_API_URL=https://${api_domain}
+ENV_EOF
+
+# --- Build backend ---
+cd /opt/foundit/backend
+pnpm install
+pnpm exec prisma generate
+pnpm exec prisma migrate deploy
+pnpm build
+
+# --- Build frontend ---
+cd /opt/foundit/foundit-ui
+pnpm install
+pnpm build
+
+# --- PM2 process manager ---
+# .cjs, not .js: /opt/foundit/package.json has "type": "module", which makes
+# Node treat plain .js files as ESM (breaking PM2's `module.exports` load).
+cat > /opt/foundit/ecosystem.config.cjs <<'ECOSYSTEM_EOF'
+module.exports = {
+  apps: [
+    {
+      name: "foundit-backend",
+      cwd: "/opt/foundit/backend",
+      script: "dist/index.js",
+      env: { NODE_ENV: "production" },
+    },
+    {
+      name: "foundit-frontend",
+      cwd: "/opt/foundit/foundit-ui",
+      script: "pnpm",
+      args: "start",
+      interpreter: "none",
+      env: { NODE_ENV: "production" },
+    },
+  ],
+};
+ECOSYSTEM_EOF
+
+pm2 start /opt/foundit/ecosystem.config.cjs
+pm2 save
+# The systemd unit gets enabled as a side effect of `pm2 startup` itself;
+# the piped re-invocation sometimes prints a harmless trailing line that
+# isn't valid shell, so don't let that abort the rest of this script.
+pm2 startup systemd -u root --hp /root | tail -1 | bash || true
+
+# --- Nginx reverse proxy for both subdomains ---
+cat > /etc/nginx/sites-available/foundit <<'NGINX_EOF'
+server {
+    listen 80;
+    server_name ${frontend_domain};
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name ${api_domain};
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+NGINX_EOF
+
+ln -sf /etc/nginx/sites-available/foundit /etc/nginx/sites-enabled/foundit
+rm -f /etc/nginx/sites-enabled/default
+nginx -t
+systemctl reload nginx
+
+# --- TLS. If this fails because Cloudflare's DNS record hadn't propagated
+# yet, SSH in and re-run this certbot command by hand once `dig` resolves
+# both domains to this instance's static IP. ---
+certbot --nginx \
+  -d ${frontend_domain} \
+  -d ${api_domain} \
+  --non-interactive --agree-tos -m ${letsencrypt_email} --redirect
+
+# --- Helper script for future manual redeploys (not Terraform-managed) ---
+cat > /opt/foundit/redeploy.sh <<'REDEPLOY_EOF'
+#!/bin/bash
+set -eux
+cd /opt/foundit
+git pull
+cd backend && pnpm install && pnpm exec prisma generate && pnpm exec prisma migrate deploy && pnpm build
+cd ../foundit-ui && pnpm install && pnpm build
+pm2 restart all
+REDEPLOY_EOF
+chmod +x /opt/foundit/redeploy.sh
