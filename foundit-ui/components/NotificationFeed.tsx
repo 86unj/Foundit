@@ -6,107 +6,59 @@
  * Students see it in the profile page's Notifications tab; security staff
  * reach the same tab via the navbar bell. Data comes from
  * GET /api/notifications via the useNotifications hook; clicking a card marks
- * it read, the status circle toggles read ⇄ unread, and "Unread" filters the
- * list. All updates are optimistic.
- *
- * The Unread filter is client-side, which is correct only while the full
- * list is loaded in one request — move it server-side (?unreadOnly=true)
- * when pagination lands.
+ * it read, the status circle toggles read ⇄ unread, and the × control dismisses
+ * a single notification. "Unread" filters server-side (?unreadOnly=true).
+ * Pages load 10 at a time with Load more.
  */
 
-import { Checkbox, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
+import { Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useState } from 'react';
 import NotificationCard from '@/components/NotificationCard';
 import Button from '@/components/ui/Button';
 import { useNotifications } from '@/hooks/useNotifications';
 
 export default function NotificationFeed() {
+  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const {
     notifications,
     unreadCount,
+    nextCursor,
     isLoading,
+    isLoadingMore,
     error,
     markRead,
     markUnread,
     markAllRead,
     dismiss,
-  } = useNotifications();
+    loadMore,
+  } = useNotifications({ unreadOnly: showUnreadOnly });
 
-  const [showUnreadOnly, setShowUnreadOnly] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [isRemoving, setIsRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState<string | null>(null);
+  const [dismissError, setDismissError] = useState<string | null>(null);
 
-  const visibleNotifications = showUnreadOnly
-    ? notifications.filter((n) => !n.isRead)
-    : notifications;
-  const visibleIds = visibleNotifications.map((item) => item.notificationId);
-  const allVisibleSelected =
-    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
-
-  const toggleSelected = (notificationId: string, selected: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (selected) next.add(notificationId);
-      else next.delete(notificationId);
-      return next;
-    });
-  };
-
-  const removeSelected = async () => {
-    const ids = [...selectedIds];
-    if (ids.length === 0 || isRemoving) return;
-    setIsRemoving(true);
-    setRemoveError(null);
+  const dismissOne = async (notificationId: string) => {
+    setDismissError(null);
     try {
-      await dismiss(ids);
-      setSelectedIds(new Set());
+      await dismiss([notificationId]);
     } catch {
-      setRemoveError('Could not remove the selected notifications.');
-    } finally {
-      setIsRemoving(false);
+      setDismissError('Could not remove the notification.');
     }
   };
 
   return (
-    <Stack gap={4} w="full">
-      <Text fontSize="2xl" fontWeight="bold" color="gray.900">
+    <Stack gap={4} w="full" minW={0}>
+      <Text
+        fontSize={{ base: 'xl', md: '2xl' }}
+        fontWeight="bold"
+        color="gray.900"
+      >
         Notifications
       </Text>
 
-      <Flex align="center" justify="space-between" gap={4} flexWrap="wrap">
-        <HStack gap={3}>
-          <Checkbox.Root
-            checked={allVisibleSelected}
-            onCheckedChange={(event) => {
-              const checked = Boolean(event.checked);
-              setSelectedIds((prev) => {
-                const next = new Set(prev);
-                visibleIds.forEach((id) =>
-                  checked ? next.add(id) : next.delete(id)
-                );
-                return next;
-              });
-            }}
-          >
-            <Checkbox.HiddenInput />
-            <Checkbox.Control />
-            <Checkbox.Label>Select</Checkbox.Label>
-          </Checkbox.Root>
-          <Button
-            variant="dangerOutline"
-            size="sm"
-            loading={isRemoving}
-            onClick={removeSelected}
-          >
-            Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
-          </Button>
-        </HStack>
-
-        <HStack gap={4} ml="auto">
+      <Flex align="center" justify="flex-end" gap={4} flexWrap="wrap">
+        <HStack gap={4}>
           <Text
             as="button"
-            fontSize="md"
+            fontSize={{ base: 'sm', md: 'md' }}
             fontWeight="medium"
             color={showUnreadOnly ? 'blue.500' : 'gray.600'}
             textDecoration={showUnreadOnly ? 'underline' : 'none'}
@@ -118,7 +70,7 @@ export default function NotificationFeed() {
           </Text>
           <Text
             as="button"
-            fontSize="md"
+            fontSize={{ base: 'sm', md: 'md' }}
             fontWeight="medium"
             color="blue.500"
             cursor="pointer"
@@ -129,9 +81,9 @@ export default function NotificationFeed() {
         </HStack>
       </Flex>
 
-      {removeError ? (
+      {dismissError ? (
         <Text fontSize="sm" color="fg.error" role="alert">
-          {removeError}
+          {dismissError}
         </Text>
       ) : null}
 
@@ -143,15 +95,15 @@ export default function NotificationFeed() {
         <Text fontSize="sm" color="fg.error" textAlign="center" py={10}>
           Could not load notifications. Please try again later.
         </Text>
-      ) : visibleNotifications.length === 0 ? (
+      ) : notifications.length === 0 ? (
         <Text fontSize="sm" color="gray.500" textAlign="center" py={10}>
           {showUnreadOnly
             ? 'No unread notifications.'
             : "You're all caught up — no notifications yet."}
         </Text>
       ) : (
-        <Stack gap={4}>
-          {visibleNotifications.map((notification) => (
+        <Stack gap={2}>
+          {notifications.map((notification) => (
             <NotificationCard
               key={notification.notificationId}
               title={notification.title}
@@ -164,12 +116,22 @@ export default function NotificationFeed() {
                   ? markUnread(notification.notificationId)
                   : markRead(notification.notificationId)
               }
-              selected={selectedIds.has(notification.notificationId)}
-              onSelectedChange={(selected) =>
-                toggleSelected(notification.notificationId, selected)
-              }
+              onDismiss={() => void dismissOne(notification.notificationId)}
             />
           ))}
+
+          {nextCursor ? (
+            <Flex justify="center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadMore}
+                disabled={isLoadingMore}
+              >
+                {isLoadingMore ? 'Loading...' : 'Load more'}
+              </Button>
+            </Flex>
+          ) : null}
         </Stack>
       )}
     </Stack>

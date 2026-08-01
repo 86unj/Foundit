@@ -11,19 +11,24 @@ import {
 import { useNotificationsBadge } from '@/components/NotificationsProvider';
 import type { AppNotification } from '@/types/notifications';
 
+const PAGE_SIZE = 10;
+
 /**
  * Loads the signed-in user's notification feed and exposes read/unread
- * actions.
+ * actions plus cursor pagination.
  *
  * Updates are optimistic: the UI flips immediately and rolls back to the
  * server state on failure (by refetching). When a NotificationsProvider is
  * mounted, unread-count changes are mirrored into it so the navbar bell
  * updates live.
  */
-export function useNotifications() {
+export function useNotifications(options?: { unreadOnly?: boolean }) {
+  const unreadOnly = options?.unreadOnly ?? false;
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Bumping this key re-runs the fetch effect (initial load + reloads).
   const [loadKey, setLoadKey] = useState(0);
@@ -45,12 +50,17 @@ export function useNotifications() {
     let cancelled = false;
 
     async function load() {
+      setIsLoading(true);
       try {
-        const data = await fetchNotifications();
+        const data = await fetchNotifications({
+          unreadOnly,
+          limit: PAGE_SIZE,
+        });
         if (cancelled) {
           return;
         }
         setNotifications(data.notifications);
+        setNextCursor(data.nextCursor);
         updateUnreadCount(data.unreadCount);
         setError(null);
       } catch (err) {
@@ -69,7 +79,29 @@ export function useNotifications() {
     return () => {
       cancelled = true;
     };
-  }, [loadKey, updateUnreadCount]);
+  }, [loadKey, unreadOnly, updateUnreadCount]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || isLoadingMore) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+    try {
+      const data = await fetchNotifications({
+        unreadOnly,
+        cursor: nextCursor,
+        limit: PAGE_SIZE,
+      });
+      setNotifications((prev) => [...prev, ...data.notifications]);
+      setNextCursor(data.nextCursor);
+      updateUnreadCount(data.unreadCount);
+    } catch {
+      // Keep the loaded page; user can retry Load more.
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [nextCursor, isLoadingMore, unreadOnly, updateUnreadCount]);
 
   const markRead = useCallback(
     async (notificationId: string) => {
@@ -166,12 +198,15 @@ export function useNotifications() {
   return {
     notifications,
     unreadCount,
+    nextCursor,
     isLoading,
+    isLoadingMore,
     error,
     markRead,
     markUnread,
     markAllRead,
     dismiss,
+    loadMore,
     reload,
   };
 }
