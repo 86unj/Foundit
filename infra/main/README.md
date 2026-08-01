@@ -285,13 +285,13 @@ Several separate lists decide which hostnames actually work, and a host missing
 from any one of them breaks the site in a different way. Whenever a hostname is
 added or removed, update every row below:
 
-| Layer           | Where                                                       | Symptom if a host is missing                                    |
-| --------------- | ----------------------------------------------------------- | --------------------------------------------------------------- |
-| DNS             | `cloudflare_record` resources in `main.tf`                  | Host doesn't resolve at all                                     |
-| TLS certificate | `certbot --nginx -d ...` in `templates/cloud-init.sh.tftpl` | Browser TLS warning / connection refused over HTTPS             |
-| Backend CORS    | `CORS_ORIGIN` in the backend `.env`                         | Page loads, but every API call fails — site looks totally empty |
-| R2 bucket CORS  | Cloudflare dashboard (see above)                            | Everything works except image uploads                           |
-| CI health check | `SSH_HOST` / `API_HEALTH_URL` GitHub Actions variables (Settings → Actions → Variables), consumed by the `deploy` job in `.github/workflows/ci.yml` | Deploys fail (or pass) against the wrong host |
+| Layer           | Where                                                                                                                                               | Symptom if a host is missing                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| DNS             | `cloudflare_record` resources in `main.tf`                                                                                                          | Host doesn't resolve at all                                     |
+| TLS certificate | `certbot --nginx -d ...` in `templates/cloud-init.sh.tftpl`                                                                                         | Browser TLS warning / connection refused over HTTPS             |
+| Backend CORS    | `CORS_ORIGIN` in the backend `.env`                                                                                                                 | Page loads, but every API call fails — site looks totally empty |
+| R2 bucket CORS  | Cloudflare dashboard (see above)                                                                                                                    | Everything works except image uploads                           |
+| CI health check | `SSH_HOST` / `API_HEALTH_URL` GitHub Actions variables (Settings → Actions → Variables), consumed by the `deploy` job in `.github/workflows/ci.yml` | Deploys fail (or pass) against the wrong host                   |
 
 `CORS_ORIGIN` is now a **comma-separated list** (a single value still behaves
 exactly as before); parsing lives in `backend/src/utils/corsOrigins.ts`.
