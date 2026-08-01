@@ -591,7 +591,11 @@ describe('claims routes', () => {
   test('PATCH /api/claims/:claimId/status emails students when rejected', async () => {
     mocks.authUser = { user_id: 'security-1', role: UserRole.security };
     vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(activeSecurity);
-    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce(optedInClaimRow);
+    vi.mocked(prisma.claim.findUnique).mockResolvedValueOnce({
+      ...optedInClaimRow,
+      itemId: '550e8400-e29b-41d4-a716-446655440010',
+      status: ClaimStatus.approved,
+    });
 
     const rejectedClaim = {
       ...optedInClaimRow,
@@ -607,6 +611,9 @@ describe('claims routes', () => {
     };
 
     const tx = {
+      item: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+      },
       claim: {
         update: vi.fn().mockResolvedValue(rejectedClaim),
       },
@@ -631,6 +638,13 @@ describe('claims routes', () => {
       });
 
     expect(res.status).toBe(200);
+    expect(tx.item.updateMany).toHaveBeenCalledWith({
+      where: {
+        itemId: '550e8400-e29b-41d4-a716-446655440010',
+        status: ItemStatus.claimed,
+      },
+      data: { status: ItemStatus.stored },
+    });
     expect(sendNotificationEmail).toHaveBeenCalledWith(
       expect.objectContaining({
         to: 'student@myseneca.ca',
@@ -659,7 +673,7 @@ describe('claims routes', () => {
         entityId: claimRow.claimId,
         requestId: expect.any(String),
         details: expect.objectContaining({
-          previousStatus: ClaimStatus.submitted,
+          previousStatus: ClaimStatus.approved,
           nextStatus: ClaimStatus.rejected,
           reasonCategory: 'manual_rejection',
           actorRole: 'security',

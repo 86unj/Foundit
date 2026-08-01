@@ -1450,9 +1450,32 @@ router.patch(
       const { claim: updated, notification } = await prisma.$transaction(
         async (tx) => {
           let itemTransitioned = false;
+          let previousItemStatus: ItemStatus = ItemStatus.stored;
+          let nextItemStatus: ItemStatus = ItemStatus.claimed;
+
           if (status === ClaimStatus.approved && claim.itemId) {
             await reserveItemForClaim(tx, claim.itemId);
             itemTransitioned = true;
+          }
+
+          if (
+            status === ClaimStatus.rejected &&
+            claim.status === ClaimStatus.approved &&
+            claim.itemId
+          ) {
+            const releaseResult = await tx.item.updateMany({
+              where: {
+                itemId: claim.itemId,
+                status: ItemStatus.claimed,
+              },
+              data: { status: ItemStatus.stored },
+            });
+
+            if (releaseResult.count > 0) {
+              itemTransitioned = true;
+              previousItemStatus = ItemStatus.claimed;
+              nextItemStatus = ItemStatus.stored;
+            }
           }
 
           if (status === ClaimStatus.picked_up && claim.itemId) {
@@ -1553,8 +1576,8 @@ router.patch(
                 entityLabel: claimLabel,
                 outcome: 'success',
                 details: {
-                  previousStatus: ItemStatus.stored,
-                  nextStatus: ItemStatus.claimed,
+                  previousStatus: previousItemStatus,
+                  nextStatus: nextItemStatus,
                   claimId: claim.claimId,
                 },
                 ...statusContext,
