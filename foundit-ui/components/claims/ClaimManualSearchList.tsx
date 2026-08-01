@@ -58,9 +58,12 @@ function ManualSearchRow({ item, selected, onSelect }: ManualSearchRowProps) {
           type="radio"
           name="manual-item-search"
           checked={selected}
-          onChange={onSelect}
+          readOnly
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
           accentColor="var(--chakra-colors-blue-500)"
-          onClick={(e) => e.stopPropagation()}
         />
         <Flex
           w="48px"

@@ -85,7 +85,11 @@ export function ClaimMatchCard({
             type="radio"
             name="claim-match"
             checked={selected}
-            onChange={onSelect}
+            readOnly
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelect();
+            }}
             accentColor="var(--chakra-colors-blue-500)"
           />
         </Flex>

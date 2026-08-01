@@ -17,7 +17,7 @@ interface ClaimMatchPanelProps {
   variant: MatchPanelVariant;
   suggestions: MatchSuggestion[];
   selectedItemId: string | null;
-  onSelectItem: (itemId: string) => void;
+  onSelectItem: (itemId: string | null) => void;
   onConfirmMatch: () => void | Promise<void>;
   onCloseClaim?: () => void;
   generating?: boolean;
@@ -49,6 +49,10 @@ export function ClaimMatchPanel({
   const canConfirm = Boolean(selectedItemId);
   const showMatchActions = variant === 'review' || canConfirm;
   const showFooter = showMatchActions || Boolean(onCloseClaim);
+
+  function handleSelectItem(itemId: string) {
+    onSelectItem(selectedItemId === itemId ? null : itemId);
+  }
 
   return (
     <ClaimCard>
@@ -89,7 +93,7 @@ export function ClaimMatchPanel({
                 rank={index + 1}
                 isBestMatch={index === 0}
                 selected={selectedItemId === match.itemId}
-                onSelect={() => onSelectItem(match.itemId)}
+                onSelect={() => handleSelectItem(match.itemId)}
               />
             ))}
           </Stack>
@@ -100,7 +104,7 @@ export function ClaimMatchPanel({
         <ClaimManualSearchList
           claim={claim}
           selectedItemId={selectedItemId}
-          onSelectItem={onSelectItem}
+          onSelectItem={handleSelectItem}
         />
       )}
 
