@@ -16,13 +16,9 @@ import {
 import { IoChevronForward, IoImageOutline, IoSearch } from 'react-icons/io5';
 import NextLink from 'next/link';
 import { Button } from '@/components/ui/Button';
-import {
-  fetchCampuses,
-  fetchCategoryStats,
-  fetchSecurityItems,
-} from '@/lib/api/items';
+import { fetchCategoryStats, fetchSecurityItems } from '@/lib/api/items';
 import type { SecurityClaimListItem } from '@/types/claims';
-import type { Campus, CategoryStat, SecurityItemListItem } from '@/types/items';
+import type { CategoryStat, SecurityItemListItem } from '@/types/items';
 import { formatClaimDate } from '@/utils/claimDisplay';
 
 const Select = chakra('select');
@@ -165,11 +161,9 @@ export function ClaimManualSearchList({
   selectedItemId,
   onSelectItem,
 }: ClaimManualSearchListProps) {
-  const [campuses, setCampuses] = useState<Campus[]>([]);
   const [categories, setCategories] = useState<CategoryStat[]>([]);
   const [items, setItems] = useState<SecurityItemListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [campusFilter, setCampusFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState(claim.category);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -179,27 +173,9 @@ export function ClaimManualSearchList({
   useEffect(() => {
     let active = true;
 
-    async function loadCampuses() {
-      try {
-        const data = await fetchCampuses();
-        if (active) setCampuses(data);
-      } catch {
-        // Campus filter is optional.
-      }
-    }
-
-    loadCampuses();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-
     async function loadCategories() {
       try {
-        const data = await fetchCategoryStats(campusFilter || undefined);
+        const data = await fetchCategoryStats();
         if (!active) return;
         setCategories(data);
       } catch {
@@ -211,7 +187,7 @@ export function ClaimManualSearchList({
     return () => {
       active = false;
     };
-  }, [campusFilter]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -222,7 +198,6 @@ export function ClaimManualSearchList({
 
       try {
         const result = await fetchSecurityItems({
-          campusId: campusFilter || undefined,
           category: categoryFilter.trim() || undefined,
           status: 'stored',
           limit: 20,
@@ -247,7 +222,7 @@ export function ClaimManualSearchList({
     return () => {
       active = false;
     };
-  }, [campusFilter, categoryFilter]);
+  }, [categoryFilter]);
 
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -271,7 +246,6 @@ export function ClaimManualSearchList({
 
     try {
       const result = await fetchSecurityItems({
-        campusId: campusFilter || undefined,
         category: categoryFilter.trim() || undefined,
         status: 'stored',
         cursor: nextCursor,
@@ -291,7 +265,10 @@ export function ClaimManualSearchList({
 
   return (
     <Stack gap={4}>
-      <Stack gap={3}>
+      <Grid
+        templateColumns={{ base: '1fr', sm: '1fr minmax(10rem, 12rem)' }}
+        gap={3}
+      >
         <Box position="relative">
           <Box
             position="absolute"
@@ -314,45 +291,25 @@ export function ClaimManualSearchList({
           />
         </Box>
 
-        <Grid templateColumns={{ base: '1fr', sm: '1fr 1fr' }} gap={3}>
-          <Select
-            value={campusFilter}
-            onChange={(e) => setCampusFilter(e.target.value)}
-            h={10}
-            px={3}
-            fontSize="sm"
-            bg="white"
-            borderWidth="1px"
-            borderColor="gray.300"
-            borderRadius="md"
-          >
-            <option value="">All campuses</option>
-            {campuses.map((campus) => (
-              <option key={campus.campusId} value={campus.campusId}>
-                {campus.campusName}
-              </option>
-            ))}
-          </Select>
-          <Select
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-            h={10}
-            px={3}
-            fontSize="sm"
-            bg="white"
-            borderWidth="1px"
-            borderColor="gray.300"
-            borderRadius="md"
-          >
-            <option value="">All categories</option>
-            {categories.map((category) => (
-              <option key={category.category} value={category.category}>
-                {category.category} ({category.count})
-              </option>
-            ))}
-          </Select>
-        </Grid>
-      </Stack>
+        <Select
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+          h={10}
+          px={3}
+          fontSize="sm"
+          bg="white"
+          borderWidth="1px"
+          borderColor="gray.300"
+          borderRadius="md"
+        >
+          <option value="">All categories</option>
+          {categories.map((category) => (
+            <option key={category.category} value={category.category}>
+              {category.category} ({category.count})
+            </option>
+          ))}
+        </Select>
+      </Grid>
 
       {loading ? (
         <Flex justify="center" py={8}>
