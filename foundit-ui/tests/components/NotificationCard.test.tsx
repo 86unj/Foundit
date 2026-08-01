@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { describe, expect, it, vi } from 'vitest';
 import NotificationCard from '@/components/NotificationCard';
@@ -72,5 +72,42 @@ describe('NotificationCard', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Mark as read' })).toBeDefined();
+  });
+
+  it('changes selection without firing the card click', async () => {
+    const onClick = vi.fn();
+    const onSelectedChange = vi.fn();
+    renderWithProvider(
+      <NotificationCard
+        {...baseProps}
+        onClick={onClick}
+        onSelectedChange={onSelectedChange}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+    );
+
+    await waitFor(() => expect(onSelectedChange).toHaveBeenCalledWith(true));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('does not trigger the card action from checkbox keyboard events', () => {
+    const onClick = vi.fn();
+    renderWithProvider(
+      <NotificationCard
+        {...baseProps}
+        onClick={onClick}
+        onSelectedChange={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' }),
+      { key: ' ' }
+    );
+
+    expect(onClick).not.toHaveBeenCalled();
   });
 });

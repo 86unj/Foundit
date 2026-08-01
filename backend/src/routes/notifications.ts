@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { prisma } from '../db';
 import authenticate from '../middleware/authenticate';
 import {
+  dismissNotificationsSchema,
   listNotificationsQuerySchema,
   notificationParamsSchema,
   type ListNotificationsQuery,
@@ -96,13 +97,14 @@ router.get(
         prisma.notification.findMany({
           where: {
             recipientId,
+            dismissedAt: null,
             ...(unreadOnly === 'true' ? { isRead: false } : {}),
           },
           orderBy: { createdAt: 'desc' },
           select: notificationSelect,
         }),
         prisma.notification.count({
-          where: { recipientId, isRead: false },
+          where: { recipientId, isRead: false, dismissedAt: null },
         }),
       ]);
 
@@ -137,8 +139,43 @@ router.get(
 router.patch('/read-all', authenticate, async (req, res, next) => {
   try {
     const result = await prisma.notification.updateMany({
-      where: { recipientId: req.user!.user_id, isRead: false },
+      where: {
+        recipientId: req.user!.user_id,
+        isRead: false,
+        dismissedAt: null,
+      },
       data: { isRead: true },
+    });
+
+    res.status(200).json({ updatedCount: result.count });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * Soft-removes selected notifications from the authenticated user's feed.
+ * The rows and delivery metadata remain available as an audit history.
+ */
+router.patch('/dismiss', authenticate, async (req, res, next) => {
+  try {
+    const body = dismissNotificationsSchema.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        details: body.error.issues,
+      });
+      return;
+    }
+
+    const result = await prisma.notification.updateMany({
+      where: {
+        notificationId: { in: body.data.notificationIds },
+        recipientId: req.user!.user_id,
+        dismissedAt: null,
+      },
+      data: { dismissedAt: new Date() },
     });
 
     res.status(200).json({ updatedCount: result.count });
@@ -167,7 +204,11 @@ async function setReadState(
 
     const { notificationId } = params.data;
     const existing = await prisma.notification.findFirst({
-      where: { notificationId, recipientId: req.user!.user_id },
+      where: {
+        notificationId,
+        recipientId: req.user!.user_id,
+        dismissedAt: null,
+      },
       select: { notificationId: true },
     });
 

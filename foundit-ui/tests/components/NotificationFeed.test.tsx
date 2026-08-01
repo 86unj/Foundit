@@ -46,6 +46,7 @@ function hookState(
     markRead: vi.fn(),
     markUnread: vi.fn(),
     markAllRead: vi.fn(),
+    dismiss: vi.fn(),
     reload: vi.fn(),
     ...overrides,
   };
@@ -124,6 +125,31 @@ describe('NotificationFeed', () => {
     expect(state.markAllRead).toHaveBeenCalledTimes(1);
   });
 
+  it('selects notification cards and removes the selected notifications', async () => {
+    const state = hookState();
+    useNotificationsMock.mockReturnValue(state);
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete (1)' }));
+
+    expect(state.dismiss).toHaveBeenCalledWith(['n-1']);
+  });
+
+  it('selects all visible notification cards', async () => {
+    const state = hookState();
+    useNotificationsMock.mockReturnValue(state);
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Delete (2)' })
+    ).toBeDefined();
+  });
+
   it('shows the empty state when there are no notifications', () => {
     useNotificationsMock.mockReturnValue(
       hookState({ notifications: [], unreadCount: 0 })
@@ -132,6 +158,8 @@ describe('NotificationFeed', () => {
     renderWithProvider(<NotificationFeed />);
 
     expect(screen.getByText(/no notifications yet/i)).toBeDefined();
+    expect(screen.getByRole('checkbox', { name: 'Select' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDefined();
   });
 
   it('shows an error message when loading failed', () => {
