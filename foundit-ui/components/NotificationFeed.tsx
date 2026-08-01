@@ -74,33 +74,8 @@ export default function NotificationFeed() {
         Notifications
       </Text>
 
-      <HStack justify="flex-end" gap={4}>
-        <Text
-          as="button"
-          fontSize="md"
-          fontWeight="medium"
-          color={showUnreadOnly ? 'blue.500' : 'gray.600'}
-          textDecoration={showUnreadOnly ? 'underline' : 'none'}
-          cursor="pointer"
-          aria-pressed={showUnreadOnly}
-          onClick={() => setShowUnreadOnly((prev) => !prev)}
-        >
-          Unread ( {unreadCount} )
-        </Text>
-        <Text
-          as="button"
-          fontSize="md"
-          fontWeight="medium"
-          color="blue.500"
-          cursor="pointer"
-          onClick={markAllRead}
-        >
-          Mark all as read
-        </Text>
-      </HStack>
-
-      {!isLoading && !error && notifications.length > 0 ? (
-        <Flex align="center" justify="space-between" gap={3} flexWrap="wrap">
+      <Flex align="center" justify="space-between" gap={4} flexWrap="wrap">
+        <HStack gap={3}>
           <Checkbox.Root
             checked={allVisibleSelected}
             onCheckedChange={(event) => {
@@ -116,19 +91,43 @@ export default function NotificationFeed() {
           >
             <Checkbox.HiddenInput />
             <Checkbox.Control />
-            <Checkbox.Label>Select all</Checkbox.Label>
+            <Checkbox.Label>Select</Checkbox.Label>
           </Checkbox.Root>
           <Button
             variant="dangerOutline"
             size="sm"
-            disabled={selectedIds.size === 0}
             loading={isRemoving}
             onClick={removeSelected}
           >
-            Remove{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+            Delete{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
           </Button>
-        </Flex>
-      ) : null}
+        </HStack>
+
+        <HStack gap={4} ml="auto">
+          <Text
+            as="button"
+            fontSize="md"
+            fontWeight="medium"
+            color={showUnreadOnly ? 'blue.500' : 'gray.600'}
+            textDecoration={showUnreadOnly ? 'underline' : 'none'}
+            cursor="pointer"
+            aria-pressed={showUnreadOnly}
+            onClick={() => setShowUnreadOnly((prev) => !prev)}
+          >
+            Unread ( {unreadCount} )
+          </Text>
+          <Text
+            as="button"
+            fontSize="md"
+            fontWeight="medium"
+            color="blue.500"
+            cursor="pointer"
+            onClick={markAllRead}
+          >
+            Mark all as read
+          </Text>
+        </HStack>
+      </Flex>
 
       {removeError ? (
         <Text fontSize="sm" color="fg.error" role="alert">

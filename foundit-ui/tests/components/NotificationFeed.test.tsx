@@ -133,7 +133,7 @@ describe('NotificationFeed', () => {
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Remove (1)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete (1)' }));
 
     expect(state.dismiss).toHaveBeenCalledWith(['n-1']);
   });
@@ -143,9 +143,9 @@ describe('NotificationFeed', () => {
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select' }));
 
-    expect(screen.getByRole('button', { name: 'Remove (2)' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Delete (2)' })).toBeDefined();
   });
 
   it('shows the empty state when there are no notifications', () => {
@@ -156,6 +156,8 @@ describe('NotificationFeed', () => {
     renderWithProvider(<NotificationFeed />);
 
     expect(screen.getByText(/no notifications yet/i)).toBeDefined();
+    expect(screen.getByRole('checkbox', { name: 'Select' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeDefined();
   });
 
   it('shows an error message when loading failed', () => {
