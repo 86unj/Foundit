@@ -130,25 +130,24 @@ describe('NotificationFeed', () => {
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.change(
-      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' }),
-      { target: { checked: true } }
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Delete (1)' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Delete (1)' }));
 
     expect(state.dismiss).toHaveBeenCalledWith(['n-1']);
   });
 
-  it('selects all visible notification cards', () => {
+  it('selects all visible notification cards', async () => {
     const state = hookState();
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.change(screen.getByRole('checkbox', { name: 'Select' }), {
-      target: { checked: true },
-    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select' }));
 
-    expect(screen.getByRole('button', { name: 'Delete (2)' })).toBeDefined();
+    expect(
+      await screen.findByRole('button', { name: 'Delete (2)' })
+    ).toBeDefined();
   });
 
   it('shows the empty state when there are no notifications', () => {

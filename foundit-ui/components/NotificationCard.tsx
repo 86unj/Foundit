@@ -41,6 +41,12 @@ export default function NotificationCard({
     }
   };
 
+  const handleCardClick = (event: MouseEvent) => {
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-notification-selection]')) return;
+    onClick?.();
+  };
+
   const handleToggleClick = (event: MouseEvent) => {
     // Don't let the card's mark-read onClick swallow the toggle.
     event.stopPropagation();
@@ -68,7 +74,7 @@ export default function NotificationCard({
       tabIndex={onClick ? 0 : undefined}
       cursor={onClick ? 'pointer' : undefined}
       _hover={onClick ? { bg: 'gray.50' } : undefined}
-      onClick={onClick}
+      onClick={onClick ? handleCardClick : undefined}
       onKeyDown={handleCardKeyDown}
     >
       <Box w="4px" bg={isRead ? 'transparent' : 'blue.500'} />
@@ -77,7 +83,8 @@ export default function NotificationCard({
           <Checkbox.Root
             checked={selected}
             aria-label={`Select ${title}`}
-            onClick={(event) => event.stopPropagation()}
+            data-notification-selection
+            onKeyDown={(event) => event.stopPropagation()}
             onCheckedChange={(event) =>
               onSelectedChange(Boolean(event.checked))
             }
