@@ -85,8 +85,9 @@ describe('NotificationCard', () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+    fireEvent.change(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' }),
+      { target: { checked: true } }
     );
 
     expect(onSelectedChange).toHaveBeenCalledWith(true);

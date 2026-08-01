@@ -130,8 +130,9 @@ describe('NotificationFeed', () => {
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+    fireEvent.change(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' }),
+      { target: { checked: true } }
     );
     fireEvent.click(screen.getByRole('button', { name: 'Delete (1)' }));
 
@@ -143,7 +144,9 @@ describe('NotificationFeed', () => {
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select' }));
+    fireEvent.change(screen.getByRole('checkbox', { name: 'Select' }), {
+      target: { checked: true },
+    });
 
     expect(screen.getByRole('button', { name: 'Delete (2)' })).toBeDefined();
   });
