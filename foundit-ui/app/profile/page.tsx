@@ -13,7 +13,6 @@ import {
   Box,
   Button,
   Flex,
-  HStack,
   Image,
   Spinner,
   Stack,
@@ -100,23 +99,30 @@ function ProfileSettingsContent() {
             display="flex"
             alignItems="flex-start"
             justifyContent="center"
-            px={4}
-            py={10}
+            px={{ base: 4, md: 6 }}
+            py={{ base: 6, md: 10 }}
           >
-            <HStack gap={7} maxW="1000px" w="full" align="flex-start">
+            <Flex
+              direction={{ base: 'column', md: 'row' }}
+              gap={{ base: 4, md: 7 }}
+              maxW="1000px"
+              w="full"
+              align="flex-start"
+              minW={0}
+            >
               {/* Left: profile side menu */}
               <Stack
                 bg="white"
                 rounded="md"
                 shadow="md"
-                w="240px"
+                w={{ base: 'full', md: '240px' }}
                 flexShrink={0}
                 gap={0}
                 overflow="hidden"
-                p={4}
+                p={{ base: 2, md: 4 }}
               >
                 <Box
-                  px={4}
+                  px={{ base: 3, md: 4 }}
                   py={3}
                   rounded="md"
                   cursor="pointer"
@@ -135,7 +141,7 @@ function ProfileSettingsContent() {
                   </Text>
                 </Box>
                 <Box
-                  px={4}
+                  px={{ base: 3, md: 4 }}
                   py={3}
                   cursor="pointer"
                   rounded="md"
@@ -156,7 +162,7 @@ function ProfileSettingsContent() {
                   </Text>
                 </Box>
                 <Box
-                  px={4}
+                  px={{ base: 3, md: 4 }}
                   py={3}
                   cursor="pointer"
                   rounded="md"
@@ -175,12 +181,19 @@ function ProfileSettingsContent() {
                 rounded="md"
                 shadow="md"
                 flex={1}
-                p={10}
+                w={{ base: 'full', md: 'auto' }}
+                minW={0}
+                maxW={{ base: 'full', md: '720px' }}
+                p={{ base: 5, md: 8 }}
                 gap={6}
               >
                 {activeTab === 'profile' ? (
                   <>
-                    <Text fontSize="2xl" fontWeight="bold" color="gray.900">
+                    <Text
+                      fontSize={{ base: 'xl', md: '2xl' }}
+                      fontWeight="bold"
+                      color="gray.900"
+                    >
                       Profile Settings
                     </Text>
 
@@ -193,7 +206,7 @@ function ProfileSettingsContent() {
                         {/* Avatar + change photo — the photo saves on
                             selection, independently of the Save button. */}
                         <Stack gap={2}>
-                          <HStack gap={4} align="center">
+                          <Flex gap={4} align="center" wrap="wrap">
                             {photoUrl ? (
                               <Image
                                 src={photoUrl}
@@ -260,7 +273,7 @@ function ProfileSettingsContent() {
                                 Remove
                               </Button>
                             )}
-                          </HStack>
+                          </Flex>
 
                           {photoError && (
                             <Text
@@ -274,7 +287,7 @@ function ProfileSettingsContent() {
                         </Stack>
 
                         {/* Form fields */}
-                        <Stack gap={5}>
+                        <Stack gap={5} w="full" minW={0}>
                           <TextInput
                             id="fullName"
                             label="Full Name"
@@ -311,7 +324,7 @@ function ProfileSettingsContent() {
                             />
                           )}
 
-                          <HStack gap={4} align="center">
+                          <Flex gap={4} align="center" wrap="wrap">
                             <Text fontSize="sm" color="gray.700">
                               Allow email notifications
                             </Text>
@@ -327,14 +340,18 @@ function ProfileSettingsContent() {
                                 <Switch.Thumb />
                               </Switch.Control>
                             </Switch.Root>
-                          </HStack>
+                          </Flex>
                         </Stack>
 
                         {/* Save row */}
-                        <HStack gap={4} align="center">
+                        <Flex
+                          gap={4}
+                          align={{ base: 'stretch', sm: 'center' }}
+                          direction={{ base: 'column', sm: 'row' }}
+                        >
                           <Button
                             colorPalette="blue"
-                            w="157px"
+                            w={{ base: 'full', sm: '157px' }}
                             h="40px"
                             rounded="md"
                             fontSize="md"
@@ -368,7 +385,7 @@ function ProfileSettingsContent() {
                                 'Save failed. Please try again.'}
                             </Text>
                           )}
-                        </HStack>
+                        </Flex>
                       </>
                     )}
                   </>
@@ -376,7 +393,7 @@ function ProfileSettingsContent() {
                   <NotificationFeed />
                 )}
               </Stack>
-            </HStack>
+            </Flex>
           </Box>
 
           <Footer />

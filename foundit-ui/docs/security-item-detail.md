@@ -36,9 +36,9 @@ sends the Bearer token via `authFetch`.
         └─ success         ──► render detail (fields + photo + action buttons)
         │
         ▼  Cancel  → router.push('/security/items')
-           Release → ⚠ no handler / no endpoint (placeholder; disabled while editing)
+           Release → navigates to /security/items/<id>/walk-in-release
            Edit    → toggles inline EDIT MODE (fields → inputs)
-                       Save   → updates LOCAL state only (no endpoint — see Gaps #4)
+                       Save   → PATCH /api/items/:itemId (persists)
                        Cancel → discards edits, back to read mode
 ```
 
@@ -80,11 +80,11 @@ The effect uses an `active` flag in cleanup so a stale response from a previous
 | Location           | `locationFound`                            | null → `—`.                                                      |
 | Campus             | `campusName`                               |                                                                  |
 | Description        | `descriptionPublic ?? descriptionInternal` | null → `—`. (No separate internal/public distinction in the UI.) |
-| Is item picked up? | `status === 'claimed'` → `Yes` / `No`      | Crude proxy — see Gaps #3.                                       |
+| Is item picked up? | `status === 'claimed'` → `Yes` / `No`      | Crude proxy — see Gaps #2.                                       |
 | Registrant         | `registeredBy.firstName + lastName`        | Empty → `—`.                                                     |
 | Photo              | `images[0]?.imageUrl`                      | null → empty gray box; only the **first** image is shown.        |
-| **Finder**         | **STUB** → `—`                             | No data source — see NOTES block / Gaps #1.                      |
-| **Finder Contact** | **STUB** → `—`                             | No backend column — see Gaps #1.                                 |
+| **Finder**         | not shown                                  | Not rendered; see Gaps #1.                                       |
+| **Finder Contact** | not shown                                  | Not rendered; see Gaps #1.                                       |
 
 **Returned but not displayed:** `color`, `brand`, `descriptionInternal` (when a
 public one exists), `claims[]` (claimId / status / studentName), `campusId`,
@@ -102,16 +102,15 @@ public one exists), `claims[]` (claimId / status / studentName), `campusId`,
 - Cancel navigates back to `/security/items`.
 - Responsive layout (fields beside photo on `lg`, stacked on mobile).
 
-**Stubbed / placeholder (intentional)**
+**Working (since earlier stub notes)**
 
-- **Finder** and **Finder Contact** — rendered as `—`; no real source (see NOTES block in the file).
-- **Release** button — no `onClick`, no endpoint. Does nothing (disabled while editing).
-- **Edit mode (frontend-only)** — Edit toggles `title`, `category`, `dateFound`,
-  `locationFound`, `description` into inputs (Item Name = text, Category = select
-  from `constants/categories.ts`, Date = native date, Location = text, Description =
-  textarea). **Save updates local React state only** — there is no `PATCH` endpoint,
-  so edits are lost on refresh. Cancel discards. Finder/Finder Contact, Campus, and
-  Registrant stay read-only.
+- **Edit mode** — Save persists via `PATCH /api/items/:itemId`.
+- **Release** — walks to `/security/items/<id>/walk-in-release` (`POST .../walk-in-release`).
+- **Dispose** — `PATCH /api/items/:itemId/status` with `disposed` when allowed.
+
+**Still stubbed / unused in UI**
+
+- **Finder** / **Finder Contact** — not shown (API may return `finder`; page does not render it).
 
 ## 6. Known gaps / risks
 
@@ -122,19 +121,13 @@ public one exists), `claims[]` (claimId / status / studentName), `campusId`,
    would just equal the registrant. There's also no contact column on
    `found_item_report` (closest is `user.phone`). **Decide the real source before
    wiring these up.** Same gap is mirrored in `app/report-found/[token]/page.tsx`.
-2. **No Release endpoint/flow.** The red Release button is a placeholder — no
-   `POST`/status-transition endpoint, no student-ID verification step, no claim
-   linkage. The "_Verify student ID_" note is purely informational.
-3. **"Is item picked up?" is a proxy.** Derived from `status === 'claimed'`, not a
+2. **"Is item picked up?" is a proxy.** Derived from `status === 'claimed'`, not a
    real pickup/handover record. Won't reflect `expired`/`disposed` nuance.
-4. **Edit doesn't persist.** Edit mode is wired on the frontend, but there's no
-   `PATCH /api/items/:itemId`, so Save only mutates local state — edits vanish on
-   refresh. Needs a backend update endpoint (+ validator) to become real.
-5. **Only the first image is shown.** `images[]` may hold several; gallery/multi-image
+3. **Only the first image is shown.** `images[]` may hold several; gallery/multi-image
    UI isn't built.
-6. **`claims[]` is fetched but unused.** Claim status/claimant aren't surfaced even
+4. **`claims[]` is fetched but unused.** Claim status/claimant aren't surfaced even
    though they'd be the natural backing for release + "picked up".
-7. **No client role guard.** Security relies entirely on the backend role check; a
+5. **No client role guard.** Security relies entirely on the backend role check; a
    non-security user hitting the URL just sees an error from the API, not a redirect.
 
 ## 7. How to test

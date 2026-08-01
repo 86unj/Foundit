@@ -6,6 +6,7 @@ import {
   Box,
   Flex,
   Heading,
+  Image,
   Spinner,
   Stack,
   Text,
@@ -19,6 +20,10 @@ import {
   getClaimItemName,
   claimNeedsSecurityAction,
 } from '@/utils/claimDisplay';
+
+function getClaimThumbnailUrl(claim: SecurityClaimListItem): string | null {
+  return claim.images[0]?.imageUrl ?? claim.item?.imageUrl ?? null;
+}
 
 export interface RecentClaimsTableProps {
   claims: SecurityClaimListItem[];
@@ -128,6 +133,8 @@ export function RecentClaimsTable({
 
             {actionClaims.map((claim, index) => {
               const displayStatus = getClaimDisplayStatus(claim);
+              const thumbnailUrl = getClaimThumbnailUrl(claim);
+              const itemName = getClaimItemName(claim);
               const isLast = index === actionClaims.length - 1;
 
               return (
@@ -154,23 +161,33 @@ export function RecentClaimsTable({
                       display="flex"
                       alignItems="center"
                       justifyContent="center"
+                      overflow="hidden"
                       flexShrink={0}
                     >
-                      <Box color="gray.400" aria-hidden>
-                        <IoImageOutline size={16} />
-                      </Box>
+                      {thumbnailUrl ? (
+                        <Image
+                          src={thumbnailUrl}
+                          alt={itemName}
+                          w="full"
+                          h="full"
+                          objectFit="cover"
+                        />
+                      ) : (
+                        <Box color="gray.400" aria-hidden>
+                          <IoImageOutline size={16} />
+                        </Box>
+                      )}
                     </Box>
                     <Text
                       asChild
                       fontSize="sm"
                       fontWeight="medium"
-                      // color="blue.600"
                       lineClamp={1}
                       minW={0}
                       _hover={{ textDecoration: 'underline' }}
                     >
                       <NextLink href={`/security/claims/${claim.claimId}`}>
-                        {getClaimItemName(claim)}
+                        {itemName}
                       </NextLink>
                     </Text>
                   </Flex>

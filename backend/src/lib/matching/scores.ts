@@ -33,8 +33,10 @@ export function dateProximityScore(
     return { score: 0.5, valid: true };
   }
 
+  // Students often misremember lost dates by a day or two. Keep inverted
+  // dates in the candidate pool with a low date weight instead of dropping.
   if (dateFound < dateLost) {
-    return { score: 0, valid: false };
+    return { score: 0.1, valid: true };
   }
 
   const diff = daysBetween(dateLost, dateFound);

@@ -26,9 +26,7 @@ import {
   linkClaimItem,
   updateClaimStatus,
 } from '@/lib/api/claims';
-import { fetchCampuses } from '@/lib/api/items';
 import type { MatchSuggestion, SecurityClaimDetail } from '@/types/claims';
-import type { Campus } from '@/types/items';
 import {
   claimCanBeClosedBySecurity,
   claimHasLinkedItem,
@@ -66,7 +64,6 @@ export default function ClaimDetailPage({
   const router = useRouter();
   const [claim, setClaim] = useState<SecurityClaimDetail | null>(null);
   const [suggestions, setSuggestions] = useState<MatchSuggestion[]>([]);
-  const [campuses, setCampuses] = useState<Campus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notFoundState, setNotFoundState] = useState(false);
@@ -109,10 +106,7 @@ export default function ClaimDetailPage({
       setError('');
 
       try {
-        const [claimData, campusData] = await Promise.all([
-          fetchClaimById(claimId),
-          fetchCampuses().catch(() => [] as Campus[]),
-        ]);
+        const claimData = await fetchClaimById(claimId);
 
         if (!active) return;
 
@@ -127,7 +121,6 @@ export default function ClaimDetailPage({
 
         if (!active) return;
         setClaim(resolvedClaim);
-        setCampuses(campusData);
         setSuggestions(matchData);
         if (matchData.length > 0) {
           setSelectedItemId(matchData[0].itemId);
@@ -237,14 +230,7 @@ export default function ClaimDetailPage({
     );
   }
 
-  const campusName =
-    campuses.find((campus) => campus.campusId === claim.campusId)?.campusName ??
-    '—';
-  const pickupCampusName =
-    claim.item?.campus.campusName ??
-    campuses.find((campus) => campus.campusId === claim.item?.campusId)
-      ?.campusName ??
-    '—';
+  const pickupCampusName = claim.item?.campus.campusName ?? '—';
 
   const headerSubtitle = claim.reviewedAt
     ? claimHasLinkedItem(claim) || claim.status === 'approved'
@@ -347,7 +333,7 @@ export default function ClaimDetailPage({
           gap={6}
           alignItems="start"
         >
-          <ClaimDetailsCard claim={claim} campusName={campusName} />
+          <ClaimDetailsCard claim={claim} />
 
           <Stack gap={2}>
             <ClaimMatchPanel
@@ -408,7 +394,7 @@ export default function ClaimDetailPage({
               </>
             ) : (
               <>
-                <ClaimDetailsCard claim={claim} campusName={campusName} />
+                <ClaimDetailsCard claim={claim} />
                 {claim.item ? <ClaimMatchedItemCard claim={claim} /> : null}
               </>
             )}
