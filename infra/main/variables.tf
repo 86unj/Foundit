@@ -3,13 +3,18 @@
 variable "aws_profile" {
   description = "AWS CLI profile used to run this stack."
   type        = string
-  default     = "foundit"
 }
 
 variable "aws_region" {
   description = "AWS region for the Lightsail instance and all Foundit infra."
   type        = string
   default     = "us-east-1"
+}
+
+variable "project_name" {
+  description = "Short name prefixed onto Lightsail resource names, e.g. \"<project_name>-app\"."
+  type        = string
+  default     = "foundit"
 }
 
 variable "lightsail_bundle_id" {
@@ -25,27 +30,23 @@ variable "lightsail_blueprint_id" {
 }
 
 variable "frontend_domain" {
-  description = "Subdomain serving the Next.js frontend."
+  description = "Subdomain serving the Next.js frontend, e.g. \"app.example.com\"."
   type        = string
-  default     = "foundit.garychang1214.com"
 }
 
 variable "api_domain" {
-  description = "Subdomain serving the Express backend."
+  description = "Subdomain serving the Express backend, e.g. \"api.example.com\"."
   type        = string
-  default     = "foundit-api.garychang1214.com"
 }
 
 variable "letsencrypt_email" {
   description = "Contact email for Let's Encrypt certificate registration."
   type        = string
-  default     = "garychang1214@gmail.com"
 }
 
 variable "github_repo_ssh_url" {
-  description = "SSH clone URL for the private Foundit repo."
+  description = "SSH clone URL for your fork of the Foundit repo."
   type        = string
-  default     = "git@github.com:86unj/Foundit.git"
 }
 
 variable "cd_ssh_public_key" {
@@ -56,13 +57,13 @@ variable "cd_ssh_public_key" {
 # --- Secrets: no defaults, must be supplied via terraform.tfvars (gitignored) ---
 
 variable "cloudflare_api_token" {
-  description = "Cloudflare API token with DNS edit permission on the garychang1214.com zone."
+  description = "Cloudflare API token with DNS edit permission on your zone."
   type        = string
   sensitive   = true
 }
 
 variable "cloudflare_zone_id" {
-  description = "Cloudflare zone ID for garychang1214.com."
+  description = "Cloudflare zone ID for your domain."
   type        = string
   sensitive   = true
 }
@@ -157,7 +158,7 @@ variable "openrouter_api_key" {
 # purpose: this is a public hostname, not a secret. ---
 
 variable "r2_public_base_url" {
-  description = "Optional public base URL for the R2 bucket (an r2.dev domain or a custom domain, no trailing slash), e.g. https://images.garychang1214.com. When set, backend/src/utils/imageUrl.ts builds stable, cacheable image URLs from it. Leave empty to fall back to signing a per-image presigned GET URL, which still works but expires (R2_SIGNED_URL_TTL_SECONDS, default 24h) and cannot be cached."
+  description = "Optional public base URL for the R2 bucket (an r2.dev domain or a custom domain, no trailing slash), e.g. https://images.example.com. When set, backend/src/utils/imageUrl.ts builds stable, cacheable image URLs from it. Leave empty to fall back to signing a per-image presigned GET URL, which still works but expires (R2_SIGNED_URL_TTL_SECONDS, default 24h) and cannot be cached."
   type        = string
   default     = ""
 }

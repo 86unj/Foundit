@@ -5,13 +5,13 @@
       "Sid": "TerraformStateBucketList",
       "Effect": "Allow",
       "Action": ["s3:ListBucket", "s3:GetBucketVersioning"],
-      "Resource": "arn:aws:s3:::foundit-tfstate-688948287774"
+      "Resource": "*"
     },
     {
       "Sid": "TerraformStateObjectAccess",
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-      "Resource": "arn:aws:s3:::foundit-tfstate-688948287774/*"
+      "Resource": "*"
     },
     {
       "Sid": "LightsailManage",

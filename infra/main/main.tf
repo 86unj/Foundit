@@ -6,12 +6,12 @@ resource "tls_private_key" "deploy_ssh" {
 }
 
 resource "aws_lightsail_key_pair" "app" {
-  name       = "foundit-app-key"
+  name       = "${var.project_name}-app-key"
   public_key = tls_private_key.deploy_ssh.public_key_openssh
 }
 
 resource "aws_lightsail_instance" "app" {
-  name              = "foundit-app"
+  name              = "${var.project_name}-app"
   availability_zone = "${var.aws_region}a"
   blueprint_id      = var.lightsail_blueprint_id
   bundle_id         = var.lightsail_bundle_id
@@ -41,7 +41,7 @@ resource "aws_lightsail_instance" "app" {
 }
 
 resource "aws_lightsail_static_ip" "app" {
-  name = "foundit-app-ip"
+  name = "${var.project_name}-app-ip"
 }
 
 resource "aws_lightsail_static_ip_attachment" "app" {

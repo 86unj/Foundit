@@ -21,6 +21,16 @@ deploy-logic changes ship with an ordinary push — **but the shim itself is
 written by the boot script and only exists on a box provisioned after that
 change landed.** See [Migrating an already-running instance](#migrating-an-already-running-instance).
 
+## Deploying your own fork
+
+This stack has no personal/account-specific defaults for `aws_profile`,
+`frontend_domain`, `api_domain`, `letsencrypt_email`, or
+`github_repo_ssh_url` — they're required variables, and the rest of this
+README uses this project's own reference deployment
+(`foundit.garychang1214.com`, `86unj/Foundit`, etc.) as a worked example.
+Substitute your own domain, fork, and AWS account throughout. Remote state
+is likewise per-deployer — see the backend step under **Applying** below.
+
 ## One-time manual prerequisites
 
 1. **GitHub deploy key** (repo is private): generate a dedicated keypair —
@@ -29,14 +39,14 @@ change landed.** See [Migrating an already-running instance](#migrating-an-alrea
    ssh-keygen -t ed25519 -f foundit-deploy-key -N ""
    ```
 
-   Add `foundit-deploy-key.pub` to the `86unj/Foundit` repo under
-   **Settings → Deploy keys → Add deploy key** (leave "Allow write access"
-   unchecked — read-only). Put the contents of `foundit-deploy-key` (the
-   private half) into `terraform.tfvars` as `github_deploy_key_private`.
-   Don't reuse your personal SSH key for this.
+   Add `foundit-deploy-key.pub` to your fork under **Settings → Deploy keys
+   → Add deploy key** (leave "Allow write access" unchecked — read-only).
+   Put the contents of `foundit-deploy-key` (the private half) into
+   `terraform.tfvars` as `github_deploy_key_private`. Don't reuse your
+   personal SSH key for this.
 
 2. **Cloudflare zone ID**: from the Cloudflare dashboard, Overview page for
-   `garychang1214.com` → copy the Zone ID into `terraform.tfvars`.
+   your domain → copy the Zone ID into `terraform.tfvars`.
 
 3. **Cloudflare API token**: create a token scoped to `Zone.DNS: Edit` for
    just that zone, put it in `terraform.tfvars` as `cloudflare_api_token`.
@@ -59,13 +69,16 @@ change landed.** See [Migrating an already-running instance](#migrating-an-alrea
    `backend/.env` in your local dev setup). This file is already covered by
    the repo's `.gitignore` (`*.tfvars`).
 
+6. Copy `backend.hcl.example` to `backend.hcl` (also gitignored) and fill in
+   the S3 bucket/region created by `../bootstrap`.
+
 ## Applying
 
 ```bash
 cd infra/main
-AWS_PROFILE=foundit terraform init
-AWS_PROFILE=foundit terraform plan
-AWS_PROFILE=foundit terraform apply
+AWS_PROFILE=<your aws_profile> terraform init -backend-config=backend.hcl
+AWS_PROFILE=<your aws_profile> terraform plan
+AWS_PROFILE=<your aws_profile> terraform apply
 ```
 
 First boot takes several minutes (package installs, two builds, Prisma
@@ -272,13 +285,13 @@ Several separate lists decide which hostnames actually work, and a host missing
 from any one of them breaks the site in a different way. Whenever a hostname is
 added or removed, update every row below:
 
-| Layer           | Where                                                       | Symptom if a host is missing                                    |
-| --------------- | ----------------------------------------------------------- | --------------------------------------------------------------- |
-| DNS             | `cloudflare_record` resources in `main.tf`                  | Host doesn't resolve at all                                     |
-| TLS certificate | `certbot --nginx -d ...` in `templates/cloud-init.sh.tftpl` | Browser TLS warning / connection refused over HTTPS             |
-| Backend CORS    | `CORS_ORIGIN` in the backend `.env`                         | Page loads, but every API call fails — site looks totally empty |
-| R2 bucket CORS  | Cloudflare dashboard (see above)                            | Everything works except image uploads                           |
-| CI health check | `Verify backend is live` in `.github/workflows/ci.yml`      | Deploys fail (or pass) against the wrong host                   |
+| Layer           | Where                                                                                                                                               | Symptom if a host is missing                                    |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| DNS             | `cloudflare_record` resources in `main.tf`                                                                                                          | Host doesn't resolve at all                                     |
+| TLS certificate | `certbot --nginx -d ...` in `templates/cloud-init.sh.tftpl`                                                                                         | Browser TLS warning / connection refused over HTTPS             |
+| Backend CORS    | `CORS_ORIGIN` in the backend `.env`                                                                                                                 | Page loads, but every API call fails — site looks totally empty |
+| R2 bucket CORS  | Cloudflare dashboard (see above)                                                                                                                    | Everything works except image uploads                           |
+| CI health check | `SSH_HOST` / `API_HEALTH_URL` GitHub Actions variables (Settings → Actions → Variables), consumed by the `deploy` job in `.github/workflows/ci.yml` | Deploys fail (or pass) against the wrong host                   |
 
 `CORS_ORIGIN` is now a **comma-separated list** (a single value still behaves
 exactly as before); parsing lives in `backend/src/utils/corsOrigins.ts`.

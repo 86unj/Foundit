@@ -1,0 +1,4 @@
+# Copy to terraform.tfvars (gitignored — never commit real values) and fill in.
+
+aws_profile       = ""
+state_bucket_name = ""

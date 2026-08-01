@@ -1,7 +1,6 @@
 variable "aws_profile" {
   description = "AWS CLI profile used to run this stack (elevated/admin identity only — see README)."
   type        = string
-  default     = "foundit"
 }
 
 variable "aws_region" {
@@ -11,7 +10,6 @@ variable "aws_region" {
 }
 
 variable "state_bucket_name" {
-  description = "Globally-unique S3 bucket name for Terraform remote state."
+  description = "Globally-unique S3 bucket name for Terraform remote state — unique across all of AWS, not just your account, e.g. \"<project>-tfstate-<your-account-id>\"."
   type        = string
-  default     = "foundit-tfstate-688948287774"
 }
