@@ -177,7 +177,7 @@ Global API rules:
 
 | Method | Path            | Auth | Status  | Description                                              |
 | ------ | --------------- | ---- | ------- | -------------------------------------------------------- |
-| GET    | `/api/campuses` | —    | Planned | List campuses for registration dropdowns and admin forms |
+| GET    | `/api/campuses` | —    | Done    | List campuses for registration dropdowns and admin forms |
 
 ### User Profile
 
@@ -186,7 +186,7 @@ Global API rules:
 | GET    | `/api/users/me`               | any     | Done    | Get current user's profile                   |
 | PUT    | `/api/users/me`               | any     | Done    | Replace `firstName`, `lastName`, and `phone` |
 | PATCH  | `/api/users/me/password`      | any     | Planned | Change password; requires `currentPassword`  |
-| PATCH  | `/api/users/me/notifications` | student | Stub    | Toggle email notification preference         |
+| PATCH  | `/api/users/me/notifications` | student | Done    | Toggle email notification preference         |
 
 ### Admin
 
@@ -245,10 +245,11 @@ Report link tokens stay in the URL to match the current database model, but must
 | GET    | `/api/items`                | security/admin | Done    | List items with filters and cursor pagination            |
 | GET    | `/api/items/:itemId`        | security/admin | Done    | Get item detail (internal fields, images, linked claims) |
 | POST   | `/api/items/batch`          | security/admin | Planned | Batch status update for items                            |
-| POST   | `/api/items`                | security/admin | Planned | Register a found item into inventory                     |
-| PATCH  | `/api/items/:itemId`        | security/admin | Planned | Update item fields; does not modify status               |
+| POST   | `/api/items`                | security/admin | Done    | Register a found item into inventory                     |
+| PATCH  | `/api/items/:itemId`        | security/admin | Done    | Update item fields; does not modify status               |
 | DELETE | `/api/items/:itemId`        | admin          | Planned | Permanently delete only erroneous records with audit log |
-| PATCH  | `/api/items/:itemId/status` | security/admin | Planned | Transition item lifecycle status                         |
+| PATCH  | `/api/items/:itemId/status` | security/admin | Done    | Transition item lifecycle status                         |
+| POST   | `/api/items/:itemId/walk-in-release` | security/admin | Done | Release item to student without a prior claim            |
 
 **`GET /api/items` response:**
 
@@ -300,7 +301,8 @@ security/admin at the claim's campus), claim status changes and match approval
 (to the student), the retention cron (auto-reject notices + per-campus
 `item_expiring`), and found-item report submission (`report_confirmation` to the
 finder). The unread-count "stats" endpoint from the original plan was folded into
-`GET /api/notifications` as `unreadCount`.
+`GET /api/notifications` as `unreadCount`. Student claim emails also send when
+both `emailNotificationOptIn` and claim `notificationPreference === 'email'` are set.
 
 ### Audit Logs
 

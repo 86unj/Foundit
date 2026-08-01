@@ -81,9 +81,9 @@ way to query another user's notifications.
 - No retention/cleanup job for the notification table.
 - Clicking a card doesn't navigate to the referenced claim/item
   (`referenceType`/`referenceId` are already returned by the API).
-- In-app only: `notificationPreference` and the email opt-in are stored but not
-  honored; `lib/email.ts` has a transporter (used for signup verification) that
-  a future `sendNotificationEmail` can reuse.
+- Email covers student claim events only (`deliverStudentClaimEmail` when
+  `emailNotificationOptIn` + claim `notificationPreference` are set); security
+  alerts, report confirmation, and retention expiry stay in-app.
 - No real-time push — another session's events appear on the next fetch.
 
 ## 7. Tests
