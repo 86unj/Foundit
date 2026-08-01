@@ -92,6 +92,7 @@ vi.mock('../src/db', () => ({
 }));
 
 import { prisma } from '../src/db';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { generateReportLinkToken } from '../src/utils/reportLinkToken';
 import { writeAuditLog, writeAuditLogBestEffort } from '../src/utils/auditLog';
@@ -275,6 +276,16 @@ describe('photoSessions routes', () => {
     );
     expect(res.body.fileType).toBe('png');
     expect(res.body.fileSizeKb).toBe(500);
+    expect(PutObjectCommand).toHaveBeenCalledWith({
+      Bucket: 'test-bucket',
+      Key: 'reports/550e8400-e29b-41d4-a716-446655440000.png',
+      ContentType: 'image/png',
+    });
+    expect(getSignedUrl).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      { expiresIn: 60 * 60 }
+    );
 
     // Anonymous walk-in upload: no actorRole, but the entity label names the
     // session (never the requester) and a summary is always generated.
