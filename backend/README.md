@@ -175,9 +175,9 @@ Global API rules:
 
 ### Campus
 
-| Method | Path            | Auth | Status  | Description                                              |
-| ------ | --------------- | ---- | ------- | -------------------------------------------------------- |
-| GET    | `/api/campuses` | —    | Done    | List campuses for registration dropdowns and admin forms |
+| Method | Path            | Auth | Status | Description                                              |
+| ------ | --------------- | ---- | ------ | -------------------------------------------------------- |
+| GET    | `/api/campuses` | —    | Done   | List campuses for registration dropdowns and admin forms |
 
 ### User Profile
 
@@ -238,18 +238,18 @@ Report link tokens stay in the URL to match the current database model, but must
 
 ### Items
 
-| Method | Path                        | Auth           | Status  | Description                                              |
-| ------ | --------------------------- | -------------- | ------- | -------------------------------------------------------- |
-| GET    | `/api/public/items`         | —              | Done    | Browse public-safe stored items with optional filters    |
-| GET    | `/api/items/category-stats` | —              | Done    | Public item counts per category                          |
-| GET    | `/api/items`                | security/admin | Done    | List items with filters and cursor pagination            |
-| GET    | `/api/items/:itemId`        | security/admin | Done    | Get item detail (internal fields, images, linked claims) |
-| POST   | `/api/items/batch`          | security/admin | Planned | Batch status update for items                            |
-| POST   | `/api/items`                | security/admin | Done    | Register a found item into inventory                     |
-| PATCH  | `/api/items/:itemId`        | security/admin | Done    | Update item fields; does not modify status               |
-| DELETE | `/api/items/:itemId`        | admin          | Planned | Permanently delete only erroneous records with audit log |
-| PATCH  | `/api/items/:itemId/status` | security/admin | Done    | Transition item lifecycle status                         |
-| POST   | `/api/items/:itemId/walk-in-release` | security/admin | Done | Release item to student without a prior claim            |
+| Method | Path                                 | Auth           | Status  | Description                                              |
+| ------ | ------------------------------------ | -------------- | ------- | -------------------------------------------------------- |
+| GET    | `/api/public/items`                  | —              | Done    | Browse public-safe stored items with optional filters    |
+| GET    | `/api/items/category-stats`          | —              | Done    | Public item counts per category                          |
+| GET    | `/api/items`                         | security/admin | Done    | List items with filters and cursor pagination            |
+| GET    | `/api/items/:itemId`                 | security/admin | Done    | Get item detail (internal fields, images, linked claims) |
+| POST   | `/api/items/batch`                   | security/admin | Planned | Batch status update for items                            |
+| POST   | `/api/items`                         | security/admin | Done    | Register a found item into inventory                     |
+| PATCH  | `/api/items/:itemId`                 | security/admin | Done    | Update item fields; does not modify status               |
+| DELETE | `/api/items/:itemId`                 | admin          | Planned | Permanently delete only erroneous records with audit log |
+| PATCH  | `/api/items/:itemId/status`          | security/admin | Done    | Transition item lifecycle status                         |
+| POST   | `/api/items/:itemId/walk-in-release` | security/admin | Done    | Release item to student without a prior claim            |
 
 **`GET /api/items` response:**
 
