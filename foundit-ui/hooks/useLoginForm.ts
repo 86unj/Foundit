@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { validateEmail } from '@/utils/validation';
-import { apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
 import { debugError } from '@/utils/debug';
 import {
   getRoleHome,
@@ -74,7 +74,11 @@ export function useLoginForm(redirectTo?: string | null) {
 
       // Full navigation so middleware sees the role cookie on the first request.
       window.location.href = destination;
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setPasswordError(err.message);
+        return;
+      }
       setPasswordError('Unable to connect to server.');
     } finally {
       setIsSubmitting(false);

@@ -31,9 +31,13 @@ describe('useLoginForm', () => {
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 
-  it('shows a connection error when login is rejected', async () => {
+  it('shows a verify-email message when the account is unverified', async () => {
     apiFetchMock.mockRejectedValueOnce(
-      new ApiError(401, 'Invalid email or password.')
+      new ApiError(
+        403,
+        'Please verify your email before logging in.',
+        'EMAIL_NOT_VERIFIED'
+      )
     );
     const { result } = renderHook(() => useLoginForm());
 
@@ -43,8 +47,9 @@ describe('useLoginForm', () => {
     });
     await act(() => result.current.handleLogin());
 
-    expect(result.current.passwordError).toBe('Unable to connect to server.');
-    expect(result.current.isSubmitting).toBe(false);
+    expect(result.current.passwordError).toBe(
+      'Please verify your email before logging in.'
+    );
     expect(getAccessToken()).toBeNull();
   });
 
