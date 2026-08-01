@@ -313,9 +313,6 @@ export default function WalkInReleasePage() {
     );
   }
 
-  const finderName = item.finder
-    ? `${item.finder.firstName} ${item.finder.lastName}`.trim() || PLACEHOLDER
-    : PLACEHOLDER;
   const photoUrl = item.images[0]?.imageUrl ?? null;
   const description =
     item.descriptionInternal ?? item.descriptionPublic ?? PLACEHOLDER;
@@ -388,8 +385,7 @@ export default function WalkInReleasePage() {
                 label="Location Found"
                 value={item.locationFound ?? PLACEHOLDER}
               />
-              <DetailField label="Campus" value={item.campusName} />
-              <DetailField label="Finder" value={finderName} />
+              <DetailField label="Storage campus" value={item.campusName} />
             </Stack>
 
             <Box

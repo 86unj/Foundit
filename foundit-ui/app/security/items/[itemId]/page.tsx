@@ -230,12 +230,6 @@ export default function SecurityItemDetailPage() {
   const description =
     item.descriptionInternal ?? item.descriptionPublic ?? PLACEHOLDER;
 
-  const finderName = item.finder
-    ? `${item.finder.firstName} ${item.finder.lastName}`.trim() || PLACEHOLDER
-    : PLACEHOLDER;
-  const finderContact =
-    item.finder?.phone?.trim() || item.finder?.email?.trim() || PLACEHOLDER;
-
   const canDispose = DISPOSABLE_STATUSES.has(item.status);
 
   return (
@@ -410,9 +404,7 @@ export default function SecurityItemDetailPage() {
                 />
               </>
             )}
-            <ItemDetailRow label="Campus" value={item.campusName} />
-            <ItemDetailRow label="Finder" value={finderName} />
-            <ItemDetailRow label="Finder contact" value={finderContact} />
+            <ItemDetailRow label="Storage campus" value={item.campusName} />
             <ItemDetailRow label="Registrant" value={registrantName} />
             {editing && form ? (
               <ItemDetailRow
