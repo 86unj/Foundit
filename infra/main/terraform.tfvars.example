@@ -1,0 +1,31 @@
+# Copy to terraform.tfvars (gitignored — never commit real values) and fill in.
+
+cloudflare_api_token      = ""
+cloudflare_zone_id        = ""
+github_deploy_key_private = ""
+
+database_url          = ""
+jwt_access_secret     = ""
+jwt_refresh_secret    = ""
+r2_access_key_id      = ""
+r2_secret_access_key  = ""
+r2_endpoint           = ""
+r2_bucket             = ""
+
+# Required — backend/src/lib/email.ts crashes the whole backend on boot if
+# smtp_user/smtp_pass are missing (not just email-sending requests).
+smtp_host = ""
+smtp_port = "587"
+smtp_user = ""
+smtp_pass = ""
+
+# Optional — leave blank to fall back to local hash embeddings.
+openrouter_api_key = ""
+
+# Optional — public base URL of the R2 bucket (r2.dev or custom domain, no
+# trailing slash). Leave blank to fall back to presigned image URLs.
+r2_public_base_url = ""
+
+# Public key for the dedicated GitHub Actions CD identity (not secret — only
+# the matching private key, stored as a GitHub Actions secret, grants access).
+cd_ssh_public_key = ""

@@ -3,6 +3,9 @@ import { prisma } from '../db';
 
 const router = Router();
 
+/** Sentinel campus used when a student has no campus yet — not selectable in UI. */
+const MISSING_CAMPUS_ID = '00000000-0000-0000-0000-000000000000';
+
 /**
  * @openapi
  * /api/campuses:
@@ -16,6 +19,9 @@ const router = Router();
 router.get('/', async (_req, res, next) => {
   try {
     const campuses = await prisma.campus.findMany({
+      where: {
+        campusId: { not: MISSING_CAMPUS_ID },
+      },
       select: {
         campusId: true,
         campusName: true,

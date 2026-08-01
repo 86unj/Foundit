@@ -317,6 +317,7 @@ router.post(
               {
                 actorId: actor.userId,
                 actorType: 'user',
+                actorRole: actor.role,
                 action: 'report_link_created',
                 entityType: 'report_link',
                 entityId: created.linkId,
@@ -697,14 +698,18 @@ router.post(
           },
         });
 
+        const submissionLabel = `${title} (${category})`;
+
         await Promise.all([
           writeAuditLog(
             {
               actorId: req.user!.user_id,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'report_created',
               entityType: 'found_item_report',
               entityId: linkedReport.reportId,
+              entityLabel: submissionLabel,
               outcome: 'success',
               details: { category, campusId: link.campusId },
               ...submitContext,
@@ -715,9 +720,11 @@ router.post(
             {
               actorId: req.user!.user_id,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'item_created',
               entityType: 'item',
               entityId: item.itemId,
+              entityLabel: submissionLabel,
               outcome: 'success',
               details: {
                 category,
@@ -733,9 +740,11 @@ router.post(
             {
               actorId: req.user!.user_id,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'report_link_consumed',
               entityType: 'report_link',
               entityId: link.linkId,
+              entityLabel: submissionLabel,
               outcome: 'success',
               details: { reportId: linkedReport.reportId },
               ...submitContext,
@@ -746,9 +755,11 @@ router.post(
             {
               actorId: req.user!.user_id,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'notification_created',
               entityType: 'notification',
               entityId: notification.notificationId,
+              entityLabel: submissionLabel,
               outcome: 'success',
               details: { reportId: linkedReport.reportId, itemId: item.itemId },
               ...submitContext,

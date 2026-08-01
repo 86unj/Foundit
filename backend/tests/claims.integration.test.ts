@@ -402,10 +402,21 @@ describe('claims routes', () => {
           details: expect.objectContaining({
             sourceEntityType: 'claim',
             sourceEntityId: expect.any(String),
+            actorRole: 'student',
           }),
         }),
-        expect.objectContaining({ action: 'claim_created' }),
-        expect.objectContaining({ action: 'notification_created' }),
+        expect.objectContaining({
+          action: 'claim_created',
+          details: expect.objectContaining({
+            actorRole: 'student',
+            entityLabel: 'iPhone 15',
+            summary: expect.any(String),
+          }),
+        }),
+        expect.objectContaining({
+          action: 'notification_created',
+          details: expect.objectContaining({ entityLabel: 'iPhone 15' }),
+        }),
       ])
     );
     const [requestId] = [...new Set(auditRows.map((row) => row.requestId))];
@@ -477,6 +488,10 @@ describe('claims routes', () => {
       data: expect.objectContaining({
         action: 'claim_email_notification_sent',
         requestId,
+        details: expect.objectContaining({
+          actorRole: 'student',
+          entityLabel: 'iPhone 15',
+        }),
       }),
     });
   });
@@ -647,6 +662,9 @@ describe('claims routes', () => {
           previousStatus: ClaimStatus.submitted,
           nextStatus: ClaimStatus.rejected,
           reasonCategory: 'manual_rejection',
+          actorRole: 'security',
+          entityLabel: 'iPhone 15',
+          summary: expect.stringContaining('manual_rejection'),
         }),
       }),
     });

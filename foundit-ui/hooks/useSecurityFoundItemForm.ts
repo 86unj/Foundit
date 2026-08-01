@@ -47,6 +47,10 @@ export function useSecurityFoundItemForm(defaultCampusId = '') {
       next.campus = 'Storage campus is a required field';
     }
 
+    if (imageFiles.length + sessionImages.length === 0) {
+      next.images = 'At least one photo is required';
+    }
+
     setErrors(next);
     return Object.keys(next).length === 0;
   }

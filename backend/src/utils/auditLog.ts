@@ -6,15 +6,18 @@ import {
   type AuditAction,
   prohibitedAuditDetailKeys,
 } from './auditEvents';
+import { auditSummaries } from './auditSummaries';
 import type { Request } from 'express';
 import { randomUUID } from 'node:crypto';
 
 export interface AuditLogParams {
   actorId?: string | null;
   actorType?: 'anonymous' | 'user' | 'system' | 'unknown';
+  actorRole?: 'student' | 'security' | 'admin';
   action: AuditAction;
   entityType: string;
   entityId: string | null;
+  entityLabel?: string;
   outcome?: 'success' | 'denied' | 'failure';
   reasonCode?: string | null;
   requestId?: string | null;
@@ -67,6 +70,35 @@ function resolveActorType(params: AuditLogParams) {
   return params.actorType ?? (params.actorId ? 'user' : 'unknown');
 }
 
+// Builds the human-readable details a reader sees alongside the caller's own
+// structured fields: a role label (only when an authenticated actor supplied
+// one), an entity label (only when the call site supplied one), and a
+// one-line summary sentence from the auditSummaries registry. actorRole and
+// entityLabel are separate AuditLogParams fields rather than caller-supplied
+// `details` keys, so they never pass through assertSafeDetails's per-action
+// allowlist at all -- no 40-entry catalog change is needed to support them.
+function enrichDetails(
+  params: AuditLogParams,
+  actorType: NonNullable<AuditLogParams['actorType']>,
+  outcome: NonNullable<AuditLogParams['outcome']>
+): Prisma.InputJsonObject {
+  const summary = auditSummaries[params.action]({
+    actorType,
+    actorRole: params.actorRole,
+    entityLabel: params.entityLabel,
+    outcome,
+    reasonCode: params.reasonCode ?? null,
+    details: params.details as Record<string, unknown> | undefined,
+  });
+
+  return {
+    ...(params.details ?? {}),
+    ...(params.actorRole ? { actorRole: params.actorRole } : {}),
+    ...(params.entityLabel ? { entityLabel: params.entityLabel } : {}),
+    summary,
+  };
+}
+
 function toAuditData(params: AuditLogParams) {
   const event = auditEvents[params.action];
   if (params.entityType !== event.entityType) {
@@ -76,17 +108,19 @@ function toAuditData(params: AuditLogParams) {
   }
   assertSafeDetails(params.action, params.details);
   assertRequiredDetails(params.action, params.details);
+  const actorType = resolveActorType(params);
+  const outcome = params.outcome ?? 'success';
   return {
     actorId: params.actorId ?? null,
-    actorType: resolveActorType(params),
+    actorType,
     action: params.action,
     entityType: params.entityType,
     entityId: params.entityId,
-    outcome: params.outcome ?? 'success',
+    outcome,
     reasonCode: params.reasonCode ?? null,
     requestId: params.requestId ?? null,
     runId: params.runId ?? null,
-    details: params.details,
+    details: enrichDetails(params, actorType, outcome),
     ipAddress: params.ipAddress,
   };
 }

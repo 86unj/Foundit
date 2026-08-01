@@ -40,7 +40,7 @@ Route: `app/report-found/[token]/page.tsx` → URL `/report-found/<token>`.
         │     → 201: creates FoundItemReport + Item (finderId = caller), links any
         │       uploaded images to the Item via ItemImage, consumes the link
         │     → 4xx mapped to a friendly message (see status map)
-        └─ on success → router.push(ROLE_HOME.student)  (/student/dashboard)
+        └─ on success → router.push('/report-found/submitted')
 ```
 
 Backend rules enforced on submit:
@@ -148,7 +148,7 @@ cd foundit-ui && pnpm install && pnpm dev
 
 1. Log in as `carol@myseneca.ca` / `Test1234!` (security), open `/security/qr`, click **Generate QR Code** — note the `/report-found/<token>` URL.
 2. Open that link in incognito (or log out). Click **Log in**, sign in as `alice@myseneca.ca` / `Test1234!` — you should return to the form.
-3. Fill required fields and submit — 201 → student dashboard; link is consumed.
+3. Fill required fields and submit — 201 → `/report-found/submitted`; link is consumed.
 
 **Alternate (seeded link):** open `http://localhost:3000/report-found/dev-sample-token-abc123` as alice (reset `is_used` in Prisma Studio if already consumed).
 
@@ -157,7 +157,7 @@ cd foundit-ui && pnpm install && pnpm dev
 |---|---|---|
 | QR generation | security `/security/qr` → Generate | 201, QR + link, ~30 min expiry |
 | Login redirect | open link logged out → Log in → alice | lands back on `/report-found/<token>` |
-| Happy path | fill required fields, Submit | 201 → redirect to dashboard; new `found_item_report` row |
+| Happy path | fill required fields, Submit | 201 → redirect to `/report-found/submitted`; new `found_item_report` row |
 | Validation | submit empty | each required field shows "{Field} is a required field" + icon, no layout shift |
 | Future date | pick a future date | "Date cannot be in the future" |
 | Used / expired / invalid | reuse a consumed token / bad token | matching message card |

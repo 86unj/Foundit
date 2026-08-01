@@ -156,7 +156,7 @@ All platform users — students, security staff, and admins.
 | `is_active`                     | BOOLEAN            | Default `TRUE`                                           |
 | `is_email_verified`             | BOOLEAN            | Default `FALSE` — set to `TRUE` after email verification |
 | `email_verify_token`            | VARCHAR(255)       | Nullable — cleared after verification                    |
-| `email_verify_token_expires_at` | TIMESTAMP          | Nullable — 1 hour after registration                     |
+| `email_verify_token_expires_at` | TIMESTAMP          | Nullable — 24 hours after registration                   |
 
 **Indexes:** `idx_user_student_number` (partial, where not null), `idx_user_campus_id`
 
@@ -356,7 +356,7 @@ user ──< audit_log
 - **UUID primary keys** — used everywhere for security (non-guessable IDs) and future distributed-system compatibility.
 - **Dual description fields on `item`** — `description_public` is shown to students; `description_internal` is security-only, protecting sensitive details from being exploited (BR7, BR12).
 - **`report_link` token flow** — security staff generate a QR-code link; finders use it to submit reports without needing a full account (BR10).
-- **`retention_expiry_date` is app-computed** — the application sets this when registering an item (`date_found + campus.retention_days`). A scheduled job (future) will flip status to `expired`.
+- **`retention_expiry_date` is app-computed** — the application sets this when registering an item (`date_found + campus.retention_days`). Daily cron `expireRetainedItems` flips eligible items to `expired`.
 - **`audit_log` is append-only** — no triggers auto-delete rows; all deletions of other records must write an audit entry first.
 - **`item_image` polymorphic target** — an image can belong to an item or a claim (but not neither), enforced with a `CHECK` constraint.
 - **Email verification on registration** — new accounts are created with `is_email_verified = FALSE`. A token is emailed to the user; clicking the link sets `is_email_verified = TRUE` and clears the token. Unverified accounts older than 1 day are automatically deleted by a scheduled cron job.

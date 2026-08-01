@@ -34,6 +34,14 @@ vi.mock('../src/utils/auditLog', () => ({
   })),
 }));
 
+// The profile DTO resolves the stored photo key through this helper, which
+// pulls in the R2 client (and its required env vars) at import time.
+vi.mock('../src/utils/imageUrl', () => ({
+  resolveImageUrl: vi.fn(
+    async (key: string) => `https://cdn.test.local/${key}`
+  ),
+}));
+
 vi.mock('../src/db', () => ({
   prisma: {
     user: {
@@ -46,6 +54,7 @@ vi.mock('../src/db', () => ({
 
 import { prisma } from '../src/db';
 import { writeAuditLog } from '../src/utils/auditLog';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 function createTestApp() {
   const app = express();
@@ -66,6 +75,7 @@ const userRow = {
   studentNumber: BigInt(123456789),
   employeeId: null,
   phone: null,
+  profilePhotoUrl: null,
   emailNotificationOptIn: true,
   isActive: true,
   createdAt: new Date('2026-07-01'),
@@ -179,12 +189,28 @@ describe('users routes', () => {
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: 'student-1',
+        actorRole: 'student',
         action: 'user_profile_updated',
         entityType: 'user',
         entityId: 'student-1',
       }),
       prisma
     );
+
+    // The summary sentence names which fields changed, never the raw values.
+    const [call] = vi.mocked(writeAuditLog).mock.calls[0];
+    const summary = auditSummaries.user_profile_updated({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe(
+      'A student updated their profile (firstName, studentNumber).'
+    );
+    expect(summary).not.toContain('123456789');
   });
 
   test('PUT /api/users/me returns 409 when student number is taken', async () => {
@@ -241,11 +267,156 @@ describe('users routes', () => {
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: 'student-1',
+        actorRole: 'student',
         action: 'user_notification_preferences_updated',
         entityType: 'user',
         entityId: 'student-1',
       }),
       tx
     );
+
+    // The summary sentence never echoes the opt-in value or any personal data.
+    const [call] = vi.mocked(writeAuditLog).mock.calls[0];
+    const summary = auditSummaries.user_notification_preferences_updated({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe('A student updated their notification preferences.');
+  });
+
+  describe('PATCH /api/users/me/photo', () => {
+    const avatarKey = 'avatars/2f6c1b90-1f7c-4a1f-9a6e-6f0f2d1c9b11.webp';
+
+    test('returns 401 if user is not authenticated', async () => {
+      mocks.authUser = null;
+
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: avatarKey });
+
+      expect(res.status).toBe(401);
+      expect(res.body.code).toBe('UNAUTHENTICATED');
+    });
+
+    test('stores the object key and returns a resolved URL', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(userRow);
+      vi.mocked(prisma.user.update).mockResolvedValueOnce({
+        ...userRow,
+        profilePhotoUrl: avatarKey,
+      });
+
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: avatarKey });
+
+      expect(res.status).toBe(200);
+      expect(res.body.profilePhotoUrl).toBe(
+        `https://cdn.test.local/${avatarKey}`
+      );
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { userId: 'student-1' },
+          data: { profilePhotoUrl: avatarKey },
+        })
+      );
+    });
+
+    test('clears the photo when sent null', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+        ...userRow,
+        profilePhotoUrl: avatarKey,
+      });
+      vi.mocked(prisma.user.update).mockResolvedValueOnce(userRow);
+
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: null });
+
+      expect(res.status).toBe(200);
+      expect(res.body.profilePhotoUrl).toBeNull();
+      expect(writeAuditLog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actorRole: 'student',
+          action: 'user_profile_photo_updated',
+          details: { operation: 'cleared' },
+        }),
+        expect.anything()
+      );
+    });
+
+    test('never records the object key in the audit trail', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(userRow);
+      vi.mocked(prisma.user.update).mockResolvedValueOnce({
+        ...userRow,
+        profilePhotoUrl: avatarKey,
+      });
+
+      await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: avatarKey });
+
+      expect(JSON.stringify(vi.mocked(writeAuditLog).mock.calls)).not.toContain(
+        avatarKey
+      );
+    });
+
+    // The profile DTO returns a resolved (often presigned, expiring) URL, so a
+    // client echoing that value back must be rejected rather than persisted.
+    test('rejects an absolute URL', async () => {
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: `https://cdn.test.local/${avatarKey}` });
+
+      expect(res.status).toBe(400);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    test('rejects a key outside the avatars prefix', async () => {
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: 'reports/some-item-photo.png' });
+
+      expect(res.status).toBe(400);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    test('allows a security user to set a photo', async () => {
+      mocks.authUser = { user_id: 'security-1', role: 'security' };
+      const securityRow = {
+        ...userRow,
+        userId: 'security-1',
+        role: UserRole.security,
+        studentNumber: null,
+      };
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce(securityRow);
+      vi.mocked(prisma.user.update).mockResolvedValueOnce({
+        ...securityRow,
+        profilePhotoUrl: avatarKey,
+      });
+
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: avatarKey });
+
+      expect(res.status).toBe(200);
+    });
+
+    test('returns 403 when the account is deactivated', async () => {
+      vi.mocked(prisma.user.findUnique).mockResolvedValueOnce({
+        ...userRow,
+        isActive: false,
+      });
+
+      const res = await request(createTestApp())
+        .patch('/api/users/me/photo')
+        .send({ profilePhotoUrl: avatarKey });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('ACCOUNT_INACTIVE');
+    });
   });
 });

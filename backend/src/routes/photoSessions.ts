@@ -150,6 +150,7 @@ router.post(
               {
                 actorId: req.user!.user_id,
                 actorType: 'user',
+                actorRole: req.user!.role,
                 action: 'photo_session_created',
                 entityType: 'photo_session',
                 entityId: created.sessionId,
@@ -287,6 +288,7 @@ router.post(
             action: 'photo_upload_authorized',
             entityType: 'photo_session',
             entityId: session.sessionId,
+            entityLabel: `photo session ${session.sessionId}`,
             outcome: 'success',
             details: {
               imageId: placeholder.imageId,
@@ -386,6 +388,7 @@ router.post(
         action: 'photo_image_registered',
         entityType: 'photo_session_image',
         entityId: image.imageId,
+        entityLabel: `photo session ${session.sessionId}`,
         outcome: 'success',
         details: {
           sessionId: session.sessionId,
@@ -422,6 +425,7 @@ router.get(
       const session = await prisma.photoUploadSession.findUnique({
         where: { token },
         select: {
+          sessionId: true,
           createdBy: true,
           expiresAt: true,
           images: {
@@ -449,9 +453,11 @@ router.get(
         await writeAuditLogBestEffort({
           actorId: req.user!.user_id,
           actorType: 'user',
+          actorRole: req.user!.role,
           action: 'photo_session_access_denied',
           entityType: 'photo_session',
-          entityId: null,
+          entityId: session.sessionId,
+          entityLabel: `photo session ${session.sessionId}`,
           outcome: 'denied',
           reasonCode: 'session_ownership_mismatch',
           ...auditContextFromRequest(req),
@@ -519,9 +525,11 @@ router.delete(
         await writeAuditLogBestEffort({
           actorId: req.user!.user_id,
           actorType: 'user',
+          actorRole: req.user!.role,
           action: 'photo_image_access_denied',
           entityType: 'photo_session_image',
           entityId: imageId,
+          entityLabel: `photo session ${session.sessionId}`,
           outcome: 'denied',
           reasonCode: 'session_ownership_mismatch',
           ...auditContextFromRequest(req),
@@ -543,6 +551,7 @@ router.delete(
             {
               actorId: req.user!.user_id,
               actorType: 'user',
+              actorRole: req.user!.role,
               action: 'photo_image_deleted',
               entityType: 'photo_session_image',
               entityId: imageId,

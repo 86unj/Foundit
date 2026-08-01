@@ -471,7 +471,7 @@ function createMatchFoundNotificationInput(claim: {
   return {
     recipientId: claim.studentId,
     type: NotificationType.match_found,
-    title: 'Your matched item is ready for pickup',
+    title: 'A match was found for your claim',
     message: `A found item has been matched to your claim. Visit ${officeLocation} with your student ID during office hours to collect it.`,
     referenceType: 'claim',
     referenceId: claim.claimId,
@@ -518,7 +518,9 @@ async function applyMatchConfirmation(
   },
   itemId: string,
   actorId: string,
-  context: { requestId: string; ipAddress?: string }
+  role: UserRole,
+  context: { requestId: string; ipAddress?: string },
+  itemLabel?: string
 ) {
   await reserveItemForClaim(tx, itemId);
 
@@ -552,9 +554,11 @@ async function applyMatchConfirmation(
       {
         actorId,
         actorType: 'user',
+        actorRole: role,
         action: 'claim_item_linked',
         entityType: 'claim',
         entityId: claim.claimId,
+        entityLabel: itemLabel,
         outcome: 'success',
         details: {
           previousItemId: claim.itemId ?? null,
@@ -568,9 +572,11 @@ async function applyMatchConfirmation(
       {
         actorId,
         actorType: 'user',
+        actorRole: role,
         action: 'claim_status_updated',
         entityType: 'claim',
         entityId: claim.claimId,
+        entityLabel: itemLabel,
         outcome: 'success',
         details: {
           previousStatus: claim.status ?? ClaimStatus.under_review,
@@ -585,9 +591,11 @@ async function applyMatchConfirmation(
       {
         actorId,
         actorType: 'user',
+        actorRole: role,
         action: 'item_status_updated',
         entityType: 'item',
         entityId: itemId,
+        entityLabel: itemLabel,
         outcome: 'success',
         details: {
           previousStatus: ItemStatus.stored,
@@ -603,9 +611,11 @@ async function applyMatchConfirmation(
         {
           actorId,
           actorType: 'user',
+          actorRole: role,
           action: 'notification_created',
           entityType: 'notification',
           entityId: notification.notificationId,
+          entityLabel: itemLabel,
           outcome: 'success',
           details: { claimId: claim.claimId },
           ...context,
@@ -760,7 +770,13 @@ router.post(
             referenceType: 'claim',
             referenceId: created.claimId,
           },
-          { actorId: actor.userId, actorType: 'user', ...auditContext }
+          {
+            actorId: actor.userId,
+            actorType: 'user',
+            actorRole: actor.role,
+            entityLabel: payload.itemName ?? undefined,
+            ...auditContext,
+          }
         );
 
         const nextClaim = await tx.claim.findUniqueOrThrow({
@@ -773,14 +789,18 @@ router.post(
           select: studentNotificationEmailSelect,
         });
 
+        const claimLabel = nextClaim.itemName ?? undefined;
+
         await Promise.all([
           writeAuditLog(
             {
               actorId: actor.userId,
               actorType: 'user',
+              actorRole: actor.role,
               action: 'claim_created',
               entityType: 'claim',
               entityId: nextClaim.claimId,
+              entityLabel: claimLabel,
               outcome: 'success',
               details: {
                 category: nextClaim.category,
@@ -796,9 +816,11 @@ router.post(
             {
               actorId: actor.userId,
               actorType: 'user',
+              actorRole: actor.role,
               action: 'notification_created',
               entityType: 'notification',
               entityId: studentNotification.notificationId,
+              entityLabel: claimLabel,
               outcome: 'success',
               details: { claimId: nextClaim.claimId },
               ...auditContext,
@@ -812,6 +834,7 @@ router.post(
 
       await deliverStudentClaimEmail(notification, claim, {
         actorId: actor.userId,
+        role: actor.role,
         ipAddress: req.ip,
         requestId: auditContext.requestId,
         event: 'claim_created',
@@ -1054,9 +1077,11 @@ router.delete(
         await writeAuditLogBestEffort({
           actorId: actor.userId,
           actorType: 'user',
+          actorRole: actor.role,
           action: 'claim_transition_denied',
           entityType: 'claim',
           entityId: claim.claimId,
+          entityLabel: claim.itemName ?? undefined,
           outcome: 'denied',
           reasonCode: 'claim_ownership_mismatch',
           ...auditContextFromRequest(req),
@@ -1073,9 +1098,11 @@ router.delete(
         await writeAuditLogBestEffort({
           actorId: actor.userId,
           actorType: 'user',
+          actorRole: actor.role,
           action: 'claim_transition_denied',
           entityType: 'claim',
           entityId: claim.claimId,
+          entityLabel: claim.itemName ?? undefined,
           outcome: 'denied',
           reasonCode: 'claim_not_cancellable',
           details: { currentStatus: claim.status },
@@ -1100,7 +1127,13 @@ router.delete(
             referenceType: 'claim',
             referenceId: claim.claimId,
           },
-          { actorId: actor.userId, actorType: 'user', ...deleteContext }
+          {
+            actorId: actor.userId,
+            actorType: 'user',
+            actorRole: actor.role,
+            entityLabel: claim.itemName ?? undefined,
+            ...deleteContext,
+          }
         );
         await tx.matchSuggestion.deleteMany({
           where: { claimId: claim.claimId },
@@ -1112,9 +1145,11 @@ router.delete(
           {
             actorId: actor.userId,
             actorType: 'user',
+            actorRole: actor.role,
             action: 'claim_deleted',
             entityType: 'claim',
             entityId: claim.claimId,
+            entityLabel: claim.itemName ?? undefined,
             outcome: 'success',
             details: { previousStatus: claim.status },
             ...deleteContext,
@@ -1213,6 +1248,8 @@ router.patch(
         where: { itemId },
         select: {
           itemId: true,
+          title: true,
+          category: true,
           status: true,
         },
       });
@@ -1230,9 +1267,11 @@ router.patch(
         await writeAuditLogBestEffort({
           actorId: actor.userId,
           actorType: 'user',
+          actorRole: actor.role,
           action: 'claim_transition_denied',
           entityType: 'claim',
           entityId: claim.claimId,
+          entityLabel: `${item.title} (${item.category})`,
           outcome: 'denied',
           reasonCode: 'item_not_stored',
           details: { itemId: item.itemId, itemStatus: item.status },
@@ -1256,19 +1295,23 @@ router.patch(
           claim,
           item.itemId,
           actor.userId,
-          linkContext
+          actor.role,
+          linkContext,
+          claim.itemName ?? undefined
         )
       );
 
       await Promise.all([
         deliverStudentClaimEmail(matchNotification, updated, {
           actorId: actor.userId,
+          role: actor.role,
           ipAddress: req.ip,
           requestId: linkContext.requestId,
           event: 'match_confirmed',
         }),
         deliverStudentClaimEmail(statusNotification, updated, {
           actorId: actor.userId,
+          role: actor.role,
           ipAddress: req.ip,
           requestId: linkContext.requestId,
           event: 'claim_status_approved',
@@ -1364,9 +1407,11 @@ router.patch(
         await writeAuditLogBestEffort({
           actorId: actor.userId,
           actorType: 'user',
+          actorRole: actor.role,
           action: 'claim_transition_denied',
           entityType: 'claim',
           entityId: claim.claimId,
+          entityLabel: claim.itemName ?? undefined,
           outcome: 'denied',
           reasonCode: 'invalid_status_transition',
           details: {
@@ -1452,13 +1497,17 @@ router.patch(
             select: studentNotificationEmailSelect,
           });
 
+          const claimLabel = claim.itemName ?? undefined;
+
           await writeAuditLog(
             {
               actorId: actor.userId,
               actorType: 'user',
+              actorRole: actor.role,
               action: 'claim_notification_sent',
               entityType: 'notification',
               entityId: notification.notificationId,
+              entityLabel: claimLabel,
               outcome: 'success',
               details: {
                 claimId: nextClaim.claimId,
@@ -1474,13 +1523,16 @@ router.patch(
             {
               actorId: actor.userId,
               actorType: 'user',
+              actorRole: actor.role,
               action: 'claim_status_updated',
               entityType: 'claim',
               entityId: claim.claimId,
+              entityLabel: claimLabel,
               outcome: 'success',
               details: {
                 previousStatus: claim.status,
                 nextStatus: status,
+                itemId: claim.itemId,
                 reasonCategory:
                   status === ClaimStatus.rejected ? 'manual_rejection' : null,
               },
@@ -1494,9 +1546,11 @@ router.patch(
               {
                 actorId: actor.userId,
                 actorType: 'user',
+                actorRole: actor.role,
                 action: 'item_status_updated',
                 entityType: 'item',
                 entityId: claim.itemId,
+                entityLabel: claimLabel,
                 outcome: 'success',
                 details: {
                   previousStatus: ItemStatus.stored,
@@ -1515,6 +1569,7 @@ router.patch(
 
       await deliverStudentClaimEmail(notification, updated, {
         actorId: actor.userId,
+        role: actor.role,
         ipAddress: req.ip,
         requestId: statusContext.requestId,
         event: `claim_status_${status}`,
@@ -1672,6 +1727,8 @@ router.post(
       await refreshClaimMatchSuggestions(claim.claimId, {
         actorId: actor.userId,
         actorType: 'user',
+        actorRole: actor.role,
+        entityLabel: claim.itemName ?? undefined,
         ...generationContext,
       });
 
@@ -1817,7 +1874,9 @@ router.patch(
               { claimId: match.claimId, studentId: claim.studentId },
               match.itemId,
               actor.userId,
-              matchContext
+              actor.role,
+              matchContext,
+              `${match.item.title} (${match.item.category})`
             );
           }
 
@@ -1848,9 +1907,11 @@ router.patch(
             {
               actorId: actor.userId,
               actorType: 'user',
+              actorRole: actor.role,
               action: 'claim_match_suggestion_reviewed',
               entityType: 'match_suggestion',
               entityId: match.matchId,
+              entityLabel: `${match.item.title} (${match.item.category})`,
               outcome: 'success',
               details: {
                 claimId: match.claimId,
@@ -1876,6 +1937,7 @@ router.patch(
             confirmedMatchEmail.claim,
             {
               actorId: actor.userId,
+              role: actor.role,
               ipAddress: req.ip,
               requestId: matchContext.requestId,
               event: 'match_confirmed',
@@ -1886,6 +1948,7 @@ router.patch(
             confirmedMatchEmail.claim,
             {
               actorId: actor.userId,
+              role: actor.role,
               ipAddress: req.ip,
               requestId: matchContext.requestId,
               event: 'claim_status_approved',

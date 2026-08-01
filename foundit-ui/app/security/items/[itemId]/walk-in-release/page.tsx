@@ -23,7 +23,6 @@ import {
 import { ItemStatusBadge } from '@/components/items/ItemStatusProgress';
 import { Button } from '@/components/ui/Button';
 import FieldError from '@/components/FieldError';
-import { MOCK_SECURITY_DISPLAY_NAME } from '@/constants/mockSession';
 import { useLoggedInDisplayName } from '@/hooks/useLoggedInDisplayName';
 import { fetchSecurityItem, walkInReleaseItem } from '@/lib/api/items';
 import type { SecurityItemDetail } from '@/types/items';
@@ -197,7 +196,9 @@ export default function WalkInReleasePage() {
   const router = useRouter();
   const itemId = params?.itemId;
 
-  const releasedBy = useLoggedInDisplayName(MOCK_SECURITY_DISPLAY_NAME);
+  // The backend records the real actor from the JWT; this is display only, so
+  // fall back to the neutral placeholder rather than any stand-in name.
+  const releasedBy = useLoggedInDisplayName(PLACEHOLDER);
   const releaseDateTime = useMemo(() => formatReleaseDateTime(new Date()), []);
 
   const [item, setItem] = useState<SecurityItemDetail | null>(null);
@@ -312,9 +313,6 @@ export default function WalkInReleasePage() {
     );
   }
 
-  const finderName = item.finder
-    ? `${item.finder.firstName} ${item.finder.lastName}`.trim() || PLACEHOLDER
-    : PLACEHOLDER;
   const photoUrl = item.images[0]?.imageUrl ?? null;
   const description =
     item.descriptionInternal ?? item.descriptionPublic ?? PLACEHOLDER;
@@ -387,8 +385,7 @@ export default function WalkInReleasePage() {
                 label="Location Found"
                 value={item.locationFound ?? PLACEHOLDER}
               />
-              <DetailField label="Campus" value={item.campusName} />
-              <DetailField label="Finder" value={finderName} />
+              <DetailField label="Storage campus" value={item.campusName} />
             </Stack>
 
             <Box

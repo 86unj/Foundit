@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import {
   Badge,
   Box,
@@ -22,6 +22,7 @@ import {
   IoSwapVertical,
 } from 'react-icons/io5';
 import NextLink from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { fetchAllClaims } from '@/lib/api/claims';
 import { fetchCampuses } from '@/lib/api/items';
 import type { SecurityClaimListItem } from '@/types/claims';
@@ -36,6 +37,21 @@ import {
 const Select = chakra('select');
 const SortButton = chakra('button');
 const CLAIMS_PER_PAGE = 10;
+
+const CLAIM_STATUS_FILTERS = new Set([
+  '',
+  'pending',
+  'awaiting_match',
+  'match_pending',
+  'ready_for_pickup',
+  'completed',
+  'rejected',
+]);
+
+function resolveStatusFilter(value: string | null): string {
+  if (value === null) return 'pending';
+  return CLAIM_STATUS_FILTERS.has(value) ? value : 'pending';
+}
 
 type SortField =
   | 'claimId'
@@ -117,13 +133,18 @@ const headerCellProps = {
   textTransform: 'none',
 } as const;
 
-export default function SecurityClaimsPage() {
+function SecurityClaimsPageContent() {
+  const searchParams = useSearchParams();
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [claims, setClaims] = useState<SecurityClaimListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [campusFilter, setCampusFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [campusFilter, setCampusFilter] = useState(
+    () => searchParams.get('campusId') ?? ''
+  );
+  const [statusFilter, setStatusFilter] = useState(() =>
+    resolveStatusFilter(searchParams.get('status'))
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [sortState, setSortState] = useState<SortState>({
     field: 'submitted',
@@ -381,6 +402,7 @@ export default function SecurityClaimsPage() {
           >
             <option value="pending">Active claims</option>
             <option value="">All statuses</option>
+            <option value="awaiting_match">Awaiting match</option>
             <option value="match_pending">Match pending</option>
             <option value="ready_for_pickup">Ready for pickup</option>
             <option value="completed">Completed</option>
@@ -598,4 +620,19 @@ export default function SecurityClaimsPage() {
       </Box>
     </Stack>
   );
+}
+
+export default function SecurityClaimsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SecurityClaimsPageFromUrl />
+    </Suspense>
+  );
+}
+
+function SecurityClaimsPageFromUrl() {
+  const searchParams = useSearchParams();
+  const filterKey = `${searchParams.get('status') ?? ''}|${searchParams.get('campusId') ?? ''}`;
+
+  return <SecurityClaimsPageContent key={filterKey} />;
 }

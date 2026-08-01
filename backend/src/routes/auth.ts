@@ -59,7 +59,8 @@ async function auditAuthDenied(
     | 'email_verification_denied'
     | 'refresh_token_denied',
   reasonCode: string,
-  entityId: string | null = null
+  entityId: string | null = null,
+  entityLabel?: string
 ): Promise<void> {
   const context = auditContextFromRequest(req);
   await writeAuditLogBestEffort({
@@ -69,6 +70,7 @@ async function auditAuthDenied(
     entityId,
     outcome: 'denied',
     reasonCode,
+    ...(entityLabel ? { entityLabel } : {}),
     ...context,
   });
 }
@@ -173,7 +175,8 @@ router.post(
           req,
           'user_login_denied',
           'account_inactive',
-          user.userId
+          user.userId,
+          `${user.role} account`
         );
         res.status(403).json({
           code: 'ACCOUNT_INACTIVE',
@@ -189,7 +192,8 @@ router.post(
           req,
           'user_login_denied',
           'wrong_password',
-          user.userId
+          user.userId,
+          `${user.role} account`
         );
         res.status(401).json({
           code: 'INVALID_CREDENTIALS',
@@ -202,7 +206,8 @@ router.post(
           req,
           'user_login_denied',
           'email_not_verified',
-          user.userId
+          user.userId,
+          `${user.role} account`
         );
         res.status(403).json({
           code: 'EMAIL_NOT_VERIFIED',
@@ -236,6 +241,7 @@ router.post(
           {
             actorId: user.userId,
             actorType: 'user',
+            actorRole: user.role,
             action: 'user_login',
             entityType: 'user',
             entityId: user.userId,
@@ -510,7 +516,8 @@ router.get('/verify-email', async (req, res, next) => {
         req,
         'email_verification_denied',
         'expired_token',
-        user.userId
+        user.userId,
+        `${user.role} account`
       );
       res.status(400).json({
         code: 'TOKEN_EXPIRED',
@@ -643,7 +650,8 @@ router.post('/refresh', validate(refreshSchema), async (req, res, next) => {
         req,
         'refresh_token_denied',
         user ? 'account_inactive' : 'user_missing',
-        user?.userId ?? null
+        user?.userId ?? null,
+        user ? `${user.role} account` : undefined
       );
       res.status(401).json({
         code: 'INVALID_REFRESH_TOKEN',
@@ -681,6 +689,7 @@ router.post('/refresh', validate(refreshSchema), async (req, res, next) => {
         {
           actorId: user.userId,
           actorType: 'user',
+          actorRole: user.role,
           action: 'refresh_token_rotated',
           entityType: 'user',
           entityId: user.userId,

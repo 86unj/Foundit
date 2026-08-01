@@ -18,6 +18,8 @@ import { startExpireRetainedItemsJob } from './jobs/expireRetainedItems';
 import uploadsRouter from './routes/uploads';
 import photoSessionsRouter from './routes/photoSessions';
 import requestContext from './middleware/requestContext';
+import { warnIfSemanticMatchingDegraded } from './lib/matching/embeddings';
+import { parseAllowedOrigins } from './utils/corsOrigins';
 
 // Fail fast if required JWT secrets are missing
 if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
@@ -30,7 +32,22 @@ if (!process.env.JWT_ACCESS_SECRET || !process.env.JWT_REFRESH_SECRET) {
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001');
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000' }));
+// In production the app sits behind Nginx on the same host, so the socket
+// address is always 127.0.0.1. Without this, req.ip is identical for every
+// user: all rate limiters collapse into one shared bucket and audit logs
+// record the proxy instead of the caller. Trust exactly one hop (Nginx);
+// raise TRUST_PROXY_HOPS if another proxy (e.g. Cloudflare) is added in front.
+// A malformed value falls back to 1 rather than handing Express a NaN, which
+// it would treat as "trust nothing" and silently reinstate the shared bucket.
+const trustProxyHops = Number.parseInt(process.env.TRUST_PROXY_HOPS ?? '', 10);
+app.set(
+  'trust proxy',
+  Number.isInteger(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 1
+);
+
+// CORS_ORIGIN is a comma-separated allowlist (see utils/corsOrigins.ts); a
+// single value behaves exactly as it did before.
+app.use(cors({ origin: parseAllowedOrigins(process.env.CORS_ORIGIN) }));
 app.use(express.json());
 app.use(requestContext);
 
@@ -51,6 +68,9 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
+  // Surface the hash-embedding fallback at boot instead of letting matching
+  // quietly return near-random results.
+  warnIfSemanticMatchingDegraded();
   startCleanupJob();
   startExpireRetainedItemsJob();
 });

@@ -21,7 +21,7 @@ interface ClaimVerificationChecklistProps {
 const checklistItems = [
   {
     key: 'verifyStudentId' as const,
-    label: 'Verify Photo ID',
+    label: 'Verify Photo ID / Student ID',
     description: 'Confirm the claimant presents valid photo ID.',
   },
   {

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { validateEmail } from '@/utils/validation';
-import { apiFetch } from '@/lib/api/client';
+import { ApiError, apiFetch } from '@/lib/api/client';
+import { debugError } from '@/utils/debug';
 import {
   getRoleHome,
   sanitizeRedirect,
@@ -44,8 +45,13 @@ export function useLoginForm(redirectTo?: string | null) {
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) {
+      // Config detail stays in the dev console — users get a plain message.
+      debugError(
+        'auth',
+        'login aborted — NEXT_PUBLIC_API_URL is empty. Set it in foundit-ui/.env.local.'
+      );
       setPasswordError(
-        'API URL is not configured. Set NEXT_PUBLIC_API_URL in foundit-ui/.env.local.'
+        'Service is temporarily unavailable. Please try again later or contact support.'
       );
       return;
     }
@@ -68,7 +74,11 @@ export function useLoginForm(redirectTo?: string | null) {
 
       // Full navigation so middleware sees the role cookie on the first request.
       window.location.href = destination;
-    } catch {
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setPasswordError(err.message);
+        return;
+      }
       setPasswordError('Unable to connect to server.');
     } finally {
       setIsSubmitting(false);

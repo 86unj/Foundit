@@ -74,6 +74,11 @@ jobs:
 
       - name: Build
         working-directory: foundit-ui
+        # next.config.ts fails a production build when this is unset. CI only
+        # needs the bundle to compile, so a placeholder is enough — the real
+        # value is written on the server at deploy time.
+        env:
+          NEXT_PUBLIC_API_URL: https://example.com
         run: pnpm build
 
   format:
@@ -98,3 +103,68 @@ jobs:
 
       - name: Check formatting
         run: pnpm exec prettier --check .
+
+  terraform:
+    name: Terraform (fmt + validate)
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        stack: [bootstrap, main]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.12'
+
+      - name: Format check
+        working-directory: infra/${{ matrix.stack }}
+        run: terraform fmt -check -recursive
+
+      - name: Init (no backend, no credentials needed — syntax/schema check only)
+        working-directory: infra/${{ matrix.stack }}
+        run: terraform init -backend=false
+
+      - name: Validate
+        working-directory: infra/${{ matrix.stack }}
+        run: terraform validate
+
+  deploy:
+    name: Deploy to Lightsail
+    runs-on: ubuntu-latest
+    needs: [backend, frontend, format]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    # One deploy at a time: two runs pulling and building in the same
+    # checkout would fight over it. Queue instead of cancelling — an
+    # interrupted deploy leaves the box half-updated.
+    concurrency:
+      group: deploy-lightsail
+      cancel-in-progress: false
+
+    steps:
+      - name: SSH in and run redeploy.sh
+        uses: appleboy/ssh-action@v1
+        with:
+          host: foundit.garychang1214.com
+          username: ubuntu
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          script: sudo /opt/foundit/redeploy.sh
+
+      - name: Verify backend is live
+        # A green SSH step only means the script exited 0; confirm the
+        # restarted process actually serves traffic. PM2 needs a moment, so
+        # retry before failing the deploy.
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 https://foundit-api.garychang1214.com/api/health; then
+              echo "Backend healthy after attempt $attempt"
+              exit 0
+            fi
+            echo "Health check attempt $attempt failed; retrying in 10s"
+            sleep 10
+          done
+          echo "Backend did not become healthy after 6 attempts"
+          exit 1

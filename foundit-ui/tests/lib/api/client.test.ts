@@ -80,7 +80,7 @@ describe('apiFetch', () => {
     expect((err as ApiError).message).toBe('Unable to connect to server.');
   });
 
-  it('reports missing NEXT_PUBLIC_API_URL as a configuration error', async () => {
+  it('reports missing API configuration without leaking env or file details', async () => {
     vi.stubEnv('NEXT_PUBLIC_API_URL', '');
     vi.resetModules();
     const client = await import('@/lib/api/client');
@@ -91,7 +91,10 @@ describe('apiFetch', () => {
 
     expect(err).toBeInstanceOf(client.ApiError);
     expect((err as ApiError).status).toBe(0);
-    expect((err as ApiError).message).toContain('NEXT_PUBLIC_API_URL');
+    expect((err as ApiError).code).toBe('API_NOT_CONFIGURED');
+    expect((err as ApiError).message).toBe(
+      'Service is temporarily unavailable. Please try again later or contact support.'
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

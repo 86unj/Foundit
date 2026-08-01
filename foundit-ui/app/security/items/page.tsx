@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Button,
@@ -17,6 +17,7 @@ import {
 } from '@chakra-ui/react';
 import { IoChevronBack, IoChevronForward, IoSearch } from 'react-icons/io5';
 import NextLink from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Button as PrimaryButton } from '@/components/ui/Button';
 import { StoredItemCard } from '@/components/items/StoredItemCard';
 import {
@@ -47,12 +48,24 @@ function isDisposable(item: SecurityItemListItem): boolean {
   return DISPOSABLE_STATUSES.has(item.status);
 }
 
-export default function StoredItemsPage() {
+function resolveItemStatusFilter(value: string | null): string {
+  if (!value) return '';
+  return ITEM_STATUSES.includes(value as ItemStatus) ? value : '';
+}
+
+function StoredItemsPageContent() {
+  const searchParams = useSearchParams();
   const [campuses, setCampuses] = useState<Campus[]>([]);
   const [items, setItems] = useState<SecurityItemListItem[]>([]);
-  const [campusFilter, setCampusFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [campusFilter, setCampusFilter] = useState(
+    () => searchParams.get('campusId') ?? ''
+  );
+  const [statusFilter, setStatusFilter] = useState(() =>
+    resolveItemStatusFilter(searchParams.get('status'))
+  );
+  const [searchQuery, setSearchQuery] = useState(
+    () => searchParams.get('q') ?? ''
+  );
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -635,4 +648,19 @@ export default function StoredItemsPage() {
       </Dialog.Root>
     </Stack>
   );
+}
+
+export default function StoredItemsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StoredItemsPageFromUrl />
+    </Suspense>
+  );
+}
+
+function StoredItemsPageFromUrl() {
+  const searchParams = useSearchParams();
+  const filterKey = `${searchParams.get('status') ?? ''}|${searchParams.get('campusId') ?? ''}|${searchParams.get('q') ?? ''}`;
+
+  return <StoredItemsPageContent key={filterKey} />;
 }

@@ -27,7 +27,11 @@ import {
 } from '@/lib/api/items';
 import type { SecurityClaimListItem } from '@/types/claims';
 import type { Campus, CategoryStat } from '@/types/items';
-import { claimAwaitingMatchConfirmation } from '@/utils/claimDisplay';
+import {
+  buildSecurityClaimsHref,
+  buildSecurityItemsHref,
+  claimAwaitingMatchConfirmation,
+} from '@/utils/claimDisplay';
 
 const Select = chakra('select');
 
@@ -247,14 +251,22 @@ export default function SecurityDashboardPage() {
           accentColor="purple.600"
           iconBg="purple.50"
           icon={<IoSearchOutline size={28} />}
+          href={buildSecurityClaimsHref({
+            status: 'awaiting_match',
+            campusId: selectedCampusId || undefined,
+          })}
         />
         <DashboardMetricCard
-          title="Ready to Approve"
+          title="Match Pending"
           value={claimsLoading ? '—' : metrics.readyToApprove}
           subtitle="Claims"
           accentColor="blue.600"
           iconBg="blue.50"
           icon={<IoClipboardOutline size={28} />}
+          href={buildSecurityClaimsHref({
+            status: 'match_pending',
+            campusId: selectedCampusId || undefined,
+          })}
         />
         <DashboardMetricCard
           title="Pending Pickup"
@@ -263,6 +275,10 @@ export default function SecurityDashboardPage() {
           accentColor="orange.600"
           iconBg="orange.50"
           icon={<IoBagHandleOutline size={28} />}
+          href={buildSecurityClaimsHref({
+            status: 'ready_for_pickup',
+            campusId: selectedCampusId || undefined,
+          })}
         />
         <DashboardMetricCard
           title="Retention Expired"
@@ -271,6 +287,10 @@ export default function SecurityDashboardPage() {
           accentColor="green.600"
           iconBg="green.50"
           icon={<IoArchiveOutline size={28} />}
+          href={buildSecurityItemsHref({
+            status: 'expired',
+            campusId: selectedCampusId || undefined,
+          })}
         />
       </SimpleGrid>
 

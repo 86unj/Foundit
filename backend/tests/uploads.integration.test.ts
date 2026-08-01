@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import uploadsRouter from '../src/routes/uploads';
 
 const mocks = vi.hoisted(() => ({
-  authUser: { user_id: 'security-1' } as { user_id: string } | null,
+  authUser: { user_id: 'security-1', role: 'security' } as {
+    user_id: string;
+    role: string;
+  } | null,
 }));
 
 vi.mock('../src/middleware/authenticate', () => ({
@@ -50,6 +53,7 @@ vi.mock('../src/utils/auditLog', () => ({
 
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { writeAuditLogBestEffort } from '../src/utils/auditLog';
+import { auditSummaries } from '../src/utils/auditSummaries';
 
 function createTestApp() {
   const app = express();
@@ -61,7 +65,7 @@ function createTestApp() {
 describe('uploads routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.authUser = { user_id: 'security-1' };
+    mocks.authUser = { user_id: 'security-1', role: 'security' };
   });
 
   test('POST /api/uploads/presigned-url returns 401 if user is not authenticated', async () => {
@@ -139,9 +143,11 @@ describe('uploads routes', () => {
       expect.objectContaining({
         action: 'upload_authorized',
         actorId: 'security-1',
+        actorRole: 'security',
         details: {
           contentType: 'image/png',
           sizeCategory: 'up_to_1mb',
+          purpose: 'report',
         },
       })
     );
@@ -151,5 +157,57 @@ describe('uploads routes', () => {
     expect(
       JSON.stringify(vi.mocked(writeAuditLogBestEffort).mock.calls)
     ).not.toContain('phone.png');
+
+    // The summary sentence names the actor role and purpose, never the filename.
+    const [call] = vi.mocked(writeAuditLogBestEffort).mock.calls[0];
+    const summary = auditSummaries.upload_authorized({
+      actorType: 'user',
+      actorRole: call.actorRole,
+      entityLabel: call.entityLabel,
+      outcome: 'success',
+      reasonCode: null,
+      details: call.details as Record<string, unknown>,
+    });
+    expect(summary).toBe(
+      'Security staff was authorized to upload a file (report).'
+    );
+    expect(summary).not.toContain('phone.png');
+  });
+
+  test('POST /api/uploads/presigned-url keys avatar uploads under avatars/', async () => {
+    vi.mocked(getSignedUrl).mockResolvedValueOnce(
+      'https://fake-upload-url.com'
+    );
+
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/uploads/presigned-url').send({
+      fileName: 'me.webp',
+      contentType: 'image/webp',
+      fileSizeKb: 200,
+      purpose: 'avatar',
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.imageUrl).toMatch(/^avatars\/.+\.webp$/);
+    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+      expect.objectContaining({
+        details: expect.objectContaining({ purpose: 'avatar' }),
+      })
+    );
+  });
+
+  test('POST /api/uploads/presigned-url rejects an unknown purpose', async () => {
+    const app = createTestApp();
+
+    const res = await request(app).post('/api/uploads/presigned-url').send({
+      fileName: 'me.webp',
+      contentType: 'image/webp',
+      fileSizeKb: 200,
+      purpose: 'constructor',
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('UNSUPPORTED_UPLOAD_PURPOSE');
   });
 });

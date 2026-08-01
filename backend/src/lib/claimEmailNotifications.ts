@@ -5,7 +5,7 @@ import {
 } from '@prisma/client';
 import { prisma } from '../db';
 import { writeAuditLogBestEffort } from '../utils/auditLog';
-import { sendNotificationEmail } from './email';
+import { buildBrandedEmail, sendNotificationEmail } from './email';
 import { logger } from './logger';
 
 export const studentNotificationEmailSelect = {
@@ -23,6 +23,7 @@ export interface StudentClaimEmailTarget {
   claimId: string;
   studentId: string;
   notificationPreference: ClaimNotificationPreference;
+  itemName?: string | null;
   student: {
     firstName: string;
     lastName: string;
@@ -33,18 +34,37 @@ export interface StudentClaimEmailTarget {
 
 interface StudentClaimEmailContext {
   actorId?: string;
+  role?: 'student' | 'security' | 'admin';
   ipAddress?: string;
   requestId?: string;
   event: string;
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+function studentClaimsUrl(): string | null {
+  const base =
+    process.env.FRONTEND_URL?.trim() || process.env.CORS_ORIGIN?.trim();
+  if (!base) {
+    return null;
+  }
+
+  return `${base.replace(/\/$/, '')}/student/my-claims`;
+}
+
+function buildStudentClaimEmailContent(input: {
+  greeting: string;
+  title: string;
+  message: string;
+}) {
+  const claimsUrl = studentClaimsUrl();
+
+  return buildBrandedEmail({
+    greeting: input.greeting,
+    title: input.title,
+    message: input.message,
+    cta: claimsUrl ? { url: claimsUrl, label: 'View My Claims' } : undefined,
+    footer:
+      'You received this email because you opted in to claim notifications on Foundit.',
+  });
 }
 
 function claimWantsEmail(claim: StudentClaimEmailTarget): boolean {
@@ -63,12 +83,14 @@ async function recordStudentClaimEmailAudit(
   await writeAuditLogBestEffort({
     actorId: context.actorId,
     actorType: context.actorId ? 'user' : 'anonymous',
+    actorRole: context.role,
     action:
       status === 'sent'
         ? 'claim_email_notification_sent'
         : 'claim_email_notification_failed',
     entityType: 'notification',
     entityId: notification.notificationId,
+    entityLabel: claim.itemName ?? undefined,
     outcome: status === 'sent' ? 'success' : 'failure',
     reasonCode: status === 'failed' ? 'email_delivery_failed' : null,
     details: {
@@ -95,17 +117,18 @@ export async function deliverStudentClaimEmail(
   const studentName =
     `${claim.student.firstName} ${claim.student.lastName}`.trim();
   const greeting = studentName ? `Hi ${studentName},` : 'Hi,';
+  const { html, text } = buildStudentClaimEmailContent({
+    greeting,
+    title: notification.title,
+    message: notification.message,
+  });
 
   try {
     await sendNotificationEmail({
       to: claim.student.email,
       subject: notification.title,
-      text: `${greeting}\n\n${notification.message}\n\nFoundit`,
-      html: `
-        <p>${escapeHtml(greeting)}</p>
-        <p>${escapeHtml(notification.message)}</p>
-        <p>Foundit</p>
-      `,
+      text,
+      html,
     });
 
     await prisma.notification.update({
