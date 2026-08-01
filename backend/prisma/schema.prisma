@@ -322,12 +322,14 @@ model Notification {
   emailSent           Boolean             @default(false) @map("email_sent")
   emailSentAt         DateTime?           @map("email_sent_at")
   emailDeliveryStatus EmailDeliveryStatus @default(not_sent) @map("email_delivery_status")
+  dismissedAt         DateTime?           @map("dismissed_at")
   createdAt           DateTime            @default(now()) @map("created_at")
 
   recipient User @relation(fields: [recipientId], references: [userId])
 
   @@index([recipientId])
   @@index([recipientId, isRead])
+  @@index([recipientId, dismissedAt])
   @@map("notification")
 }
 

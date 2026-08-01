@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  dismissNotifications,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -14,12 +15,14 @@ vi.mock('@/lib/api/notifications', () => ({
   markAllNotificationsRead: vi.fn(),
   markNotificationRead: vi.fn(),
   markNotificationUnread: vi.fn(),
+  dismissNotifications: vi.fn(),
 }));
 
 const fetchNotificationsMock = vi.mocked(fetchNotifications);
 const markNotificationReadMock = vi.mocked(markNotificationRead);
 const markNotificationUnreadMock = vi.mocked(markNotificationUnread);
 const markAllNotificationsReadMock = vi.mocked(markAllNotificationsRead);
+const dismissNotificationsMock = vi.mocked(dismissNotifications);
 
 const unread: AppNotification = {
   notificationId: 'n-1',
@@ -181,5 +184,19 @@ describe('useNotifications', () => {
     await act(() => result.current.markAllRead());
 
     expect(markAllNotificationsReadMock).not.toHaveBeenCalled();
+  });
+
+  it('optimistically removes selected notifications and updates unread count', async () => {
+    dismissNotificationsMock.mockResolvedValue({ updatedCount: 1 });
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.dismiss(['n-1']));
+
+    expect(
+      result.current.notifications.map((item) => item.notificationId)
+    ).toEqual(['n-2']);
+    expect(result.current.unreadCount).toBe(0);
+    expect(dismissNotificationsMock).toHaveBeenCalledWith(['n-1']);
   });
 });

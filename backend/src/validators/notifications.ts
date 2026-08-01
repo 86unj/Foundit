@@ -8,6 +8,10 @@ export const listNotificationsQuerySchema = z.object({
   unreadOnly: z.enum(['true', 'false']).optional(),
 });
 
+export const dismissNotificationsSchema = z.object({
+  notificationIds: z.array(z.string().uuid()).min(1).max(100),
+});
+
 export type ListNotificationsQuery = z.infer<
   typeof listNotificationsQuerySchema
 >;

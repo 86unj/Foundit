@@ -62,3 +62,19 @@ export async function markAllNotificationsRead(): Promise<{
 
   return res.json() as Promise<{ updatedCount: number }>;
 }
+
+export async function dismissNotifications(
+  notificationIds: string[]
+): Promise<{ updatedCount: number }> {
+  const res = await authFetch(`${API_BASE}/api/notifications/dismiss`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ notificationIds }),
+  });
+
+  if (!res.ok) {
+    throw new Error(await parseApiError(res));
+  }
+
+  return res.json() as Promise<{ updatedCount: number }>;
+}

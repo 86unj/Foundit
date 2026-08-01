@@ -46,6 +46,7 @@ function hookState(
     markRead: vi.fn(),
     markUnread: vi.fn(),
     markAllRead: vi.fn(),
+    dismiss: vi.fn(),
     reload: vi.fn(),
     ...overrides,
   };
@@ -122,6 +123,29 @@ describe('NotificationFeed', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
 
     expect(state.markAllRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('selects notification cards and removes the selected notifications', async () => {
+    const state = hookState();
+    useNotificationsMock.mockReturnValue(state);
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Remove (1)' }));
+
+    expect(state.dismiss).toHaveBeenCalledWith(['n-1']);
+  });
+
+  it('selects all visible notification cards', () => {
+    const state = hookState();
+    useNotificationsMock.mockReturnValue(state);
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all' }));
+
+    expect(screen.getByRole('button', { name: 'Remove (2)' })).toBeDefined();
   });
 
   it('shows the empty state when there are no notifications', () => {

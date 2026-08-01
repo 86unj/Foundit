@@ -6,6 +6,7 @@ import {
   Text,
   VStack,
   Checkmark,
+  Checkbox,
 } from '@chakra-ui/react';
 import type { KeyboardEvent, MouseEvent } from 'react';
 import { getRelativeTime } from '@/utils/relativeDate';
@@ -19,6 +20,8 @@ interface NotificationCardProps {
   onClick?: () => void;
   /** Fires when the status circle is clicked — toggles read ⇄ unread. */
   onToggleRead?: () => void;
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
 }
 
 export default function NotificationCard({
@@ -28,6 +31,8 @@ export default function NotificationCard({
   createdAt,
   onClick,
   onToggleRead,
+  selected = false,
+  onSelectedChange,
 }: NotificationCardProps) {
   const handleCardKeyDown = (event: KeyboardEvent) => {
     if (onClick && (event.key === 'Enter' || event.key === ' ')) {
@@ -68,6 +73,19 @@ export default function NotificationCard({
     >
       <Box w="4px" bg={isRead ? 'transparent' : 'blue.500'} />
       <HStack w="full" px={6} py={4} gap={4} align="center">
+        {onSelectedChange ? (
+          <Checkbox.Root
+            checked={selected}
+            aria-label={`Select ${title}`}
+            onClick={(event) => event.stopPropagation()}
+            onCheckedChange={(event) =>
+              onSelectedChange(Boolean(event.checked))
+            }
+          >
+            <Checkbox.HiddenInput />
+            <Checkbox.Control />
+          </Checkbox.Root>
+        ) : null}
         {/* Read / unread status — a toggle button when the feed wires it up. */}
         {onToggleRead ? (
           <Box

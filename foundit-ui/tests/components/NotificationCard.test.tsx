@@ -73,4 +73,23 @@ describe('NotificationCard', () => {
 
     expect(screen.getByRole('button', { name: 'Mark as read' })).toBeDefined();
   });
+
+  it('changes selection without firing the card click', () => {
+    const onClick = vi.fn();
+    const onSelectedChange = vi.fn();
+    renderWithProvider(
+      <NotificationCard
+        {...baseProps}
+        onClick={onClick}
+        onSelectedChange={onSelectedChange}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+    );
+
+    expect(onSelectedChange).toHaveBeenCalledWith(true);
+    expect(onClick).not.toHaveBeenCalled();
+  });
 });

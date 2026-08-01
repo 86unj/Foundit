@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type SetStateAction } from 'react';
 import {
+  dismissNotifications,
   fetchNotifications,
   markAllNotificationsRead,
   markNotificationRead,
@@ -135,6 +136,33 @@ export function useNotifications() {
     }
   }, [unreadCount, reload, updateUnreadCount]);
 
+  const dismiss = useCallback(
+    async (notificationIds: string[]) => {
+      if (notificationIds.length === 0) return;
+
+      const selectedIds = new Set(notificationIds);
+      const unreadRemoved = notifications.filter(
+        (notification) =>
+          selectedIds.has(notification.notificationId) && !notification.isRead
+      ).length;
+
+      setNotifications((prev) =>
+        prev.filter(
+          (notification) => !selectedIds.has(notification.notificationId)
+        )
+      );
+      updateUnreadCount((prev) => Math.max(0, prev - unreadRemoved));
+
+      try {
+        await dismissNotifications(notificationIds);
+      } catch {
+        reload();
+        throw new Error('Could not remove the selected notifications.');
+      }
+    },
+    [notifications, reload, updateUnreadCount]
+  );
+
   return {
     notifications,
     unreadCount,
@@ -143,6 +171,7 @@ export function useNotifications() {
     markRead,
     markUnread,
     markAllRead,
+    dismiss,
     reload,
   };
 }

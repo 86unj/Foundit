@@ -86,12 +86,12 @@ describe('notifications routes', () => {
 
     expect(prisma.notification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { recipientId: 'user-1' },
+        where: { recipientId: 'user-1', dismissedAt: null },
         orderBy: { createdAt: 'desc' },
       })
     );
     expect(prisma.notification.count).toHaveBeenCalledWith({
-      where: { recipientId: 'user-1', isRead: false },
+      where: { recipientId: 'user-1', isRead: false, dismissedAt: null },
     });
   });
 
@@ -106,7 +106,11 @@ describe('notifications routes', () => {
     expect(res.status).toBe(200);
     expect(prisma.notification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { recipientId: 'user-1', isRead: false },
+        where: {
+          recipientId: 'user-1',
+          isRead: false,
+          dismissedAt: null,
+        },
       })
     );
   });
@@ -141,7 +145,11 @@ describe('notifications routes', () => {
     expect(res.body.code).toBe('NOTIFICATION_NOT_FOUND');
     expect(prisma.notification.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { notificationId, recipientId: 'user-1' },
+        where: {
+          notificationId,
+          recipientId: 'user-1',
+          dismissedAt: null,
+        },
       })
     );
     expect(prisma.notification.update).not.toHaveBeenCalled();
@@ -225,8 +233,41 @@ describe('notifications routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.updatedCount).toBe(4);
     expect(prisma.notification.updateMany).toHaveBeenCalledWith({
-      where: { recipientId: 'user-1', isRead: false },
+      where: {
+        recipientId: 'user-1',
+        isRead: false,
+        dismissedAt: null,
+      },
       data: { isRead: true },
     });
+  });
+
+  test('PATCH /api/notifications/dismiss soft-removes only owned notifications', async () => {
+    (prisma.notification.updateMany as Mock).mockResolvedValue({ count: 1 });
+
+    const res = await request(createTestApp())
+      .patch('/api/notifications/dismiss')
+      .send({ notificationIds: [notificationId] });
+
+    expect(res.status).toBe(200);
+    expect(res.body.updatedCount).toBe(1);
+    expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+      where: {
+        notificationId: { in: [notificationId] },
+        recipientId: 'user-1',
+        dismissedAt: null,
+      },
+      data: { dismissedAt: expect.any(Date) },
+    });
+  });
+
+  test('PATCH /api/notifications/dismiss rejects an empty selection', async () => {
+    const res = await request(createTestApp())
+      .patch('/api/notifications/dismiss')
+      .send({ notificationIds: [] });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+    expect(prisma.notification.updateMany).not.toHaveBeenCalled();
   });
 });

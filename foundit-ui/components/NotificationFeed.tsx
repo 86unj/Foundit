@@ -14,9 +14,10 @@
  * when pagination lands.
  */
 
-import { Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
+import { Checkbox, Flex, HStack, Spinner, Stack, Text } from '@chakra-ui/react';
 import { useState } from 'react';
 import NotificationCard from '@/components/NotificationCard';
+import Button from '@/components/ui/Button';
 import { useNotifications } from '@/hooks/useNotifications';
 
 export default function NotificationFeed() {
@@ -28,13 +29,44 @@ export default function NotificationFeed() {
     markRead,
     markUnread,
     markAllRead,
+    dismiss,
   } = useNotifications();
 
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState<string | null>(null);
 
   const visibleNotifications = showUnreadOnly
     ? notifications.filter((n) => !n.isRead)
     : notifications;
+  const visibleIds = visibleNotifications.map((item) => item.notificationId);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const toggleSelected = (notificationId: string, selected: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(notificationId);
+      else next.delete(notificationId);
+      return next;
+    });
+  };
+
+  const removeSelected = async () => {
+    const ids = [...selectedIds];
+    if (ids.length === 0 || isRemoving) return;
+    setIsRemoving(true);
+    setRemoveError(null);
+    try {
+      await dismiss(ids);
+      setSelectedIds(new Set());
+    } catch {
+      setRemoveError('Could not remove the selected notifications.');
+    } finally {
+      setIsRemoving(false);
+    }
+  };
 
   return (
     <Stack gap={4} w="full">
@@ -67,6 +99,43 @@ export default function NotificationFeed() {
         </Text>
       </HStack>
 
+      {!isLoading && !error && notifications.length > 0 ? (
+        <Flex align="center" justify="space-between" gap={3} flexWrap="wrap">
+          <Checkbox.Root
+            checked={allVisibleSelected}
+            onCheckedChange={(event) => {
+              const checked = Boolean(event.checked);
+              setSelectedIds((prev) => {
+                const next = new Set(prev);
+                visibleIds.forEach((id) =>
+                  checked ? next.add(id) : next.delete(id)
+                );
+                return next;
+              });
+            }}
+          >
+            <Checkbox.HiddenInput />
+            <Checkbox.Control />
+            <Checkbox.Label>Select all</Checkbox.Label>
+          </Checkbox.Root>
+          <Button
+            variant="dangerOutline"
+            size="sm"
+            disabled={selectedIds.size === 0}
+            loading={isRemoving}
+            onClick={removeSelected}
+          >
+            Remove{selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}
+          </Button>
+        </Flex>
+      ) : null}
+
+      {removeError ? (
+        <Text fontSize="sm" color="fg.error" role="alert">
+          {removeError}
+        </Text>
+      ) : null}
+
       {isLoading ? (
         <Flex align="center" justify="center" py={10}>
           <Spinner size="lg" color="blue.500" />
@@ -95,6 +164,10 @@ export default function NotificationFeed() {
                 notification.isRead
                   ? markUnread(notification.notificationId)
                   : markRead(notification.notificationId)
+              }
+              selected={selectedIds.has(notification.notificationId)}
+              onSelectedChange={(selected) =>
+                toggleSelected(notification.notificationId, selected)
               }
             />
           ))}
