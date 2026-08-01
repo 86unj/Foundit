@@ -20,6 +20,7 @@ CLAUDE.local.md
 *.tfstate
 *.tfstate.*
 *.tfvars
+backend.hcl
 crash.log
 crash.*.log
 

@@ -1,5 +1,18 @@
 # Copy to terraform.tfvars (gitignored — never commit real values) and fill in.
 
+# Your AWS CLI profile (see ../bootstrap), your two subdomains, your
+# Let's Encrypt contact email, and the SSH clone URL of your own fork.
+aws_profile         = ""
+frontend_domain     = ""
+api_domain          = ""
+letsencrypt_email   = ""
+github_repo_ssh_url = ""
+
+# Optional — short name prefixed onto Lightsail resource names
+# (<project_name>-app, <project_name>-app-key, <project_name>-app-ip).
+# Defaults to "foundit" if left unset.
+# project_name = "foundit"
+
 cloudflare_api_token      = ""
 cloudflare_zone_id        = ""
 github_deploy_key_private = ""

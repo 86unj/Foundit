@@ -148,7 +148,7 @@ jobs:
       - name: SSH in and run redeploy.sh
         uses: appleboy/ssh-action@v1
         with:
-          host: foundit.garychang1214.com
+          host: ${{ vars.SSH_HOST }}
           username: ubuntu
           key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
           script: sudo /opt/foundit/redeploy.sh
@@ -159,7 +159,7 @@ jobs:
         # retry before failing the deploy.
         run: |
           for attempt in 1 2 3 4 5 6; do
-            if curl -fsS --max-time 10 https://foundit-api.garychang1214.com/api/health; then
+            if curl -fsS --max-time 10 "${{ vars.API_HEALTH_URL }}"; then
               echo "Backend healthy after attempt $attempt"
               exit 0
             fi
