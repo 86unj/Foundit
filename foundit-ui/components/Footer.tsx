@@ -20,7 +20,7 @@ export default function Footer() {
         <Text fontSize="sm">© 2026 FoundIt. All rights reserved.</Text>
 
         {/* Right Side */}
-        <HStack ml="auto" gap={8}>
+        {/* <HStack ml="auto" gap={8}>
           <Link href="#" fontSize="sm" color="gray.400">
             Privacy Policy
           </Link>
@@ -32,7 +32,7 @@ export default function Footer() {
           <Link href="#" fontSize="sm" color="gray.400">
             Contact
           </Link>
-        </HStack>
+        </HStack> */}
       </Flex>
     </Box>
   );
