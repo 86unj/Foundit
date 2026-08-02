@@ -1,11 +1,14 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { User } from '@prisma/client';
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { prisma } from '../db';
+import { r2, R2_BUCKET } from '../lib/r2';
 import authenticate from '../middleware/authenticate';
 import requireRole from '../middleware/requireRole';
 import { validate } from '../validators/shared';
 import {
+  AVATAR_KEY_PATTERN,
   replaceProfileSchema,
   updateNotificationSchema,
   updateProfilePhotoSchema,
@@ -441,8 +444,23 @@ router.patch(
         typeof updateProfilePhotoSchema
       >;
       const context = auditContextFromRequest(req);
+      const avatarToDelete =
+        profilePhotoUrl === null &&
+        existing.profilePhotoUrl &&
+        AVATAR_KEY_PATTERN.test(existing.profilePhotoUrl)
+          ? existing.profilePhotoUrl
+          : null;
 
       const updated = await prisma.$transaction(async (tx) => {
+        if (avatarToDelete) {
+          await r2.send(
+            new DeleteObjectCommand({
+              Bucket: R2_BUCKET,
+              Key: avatarToDelete,
+            })
+          );
+        }
+
         const profile = await tx.user.update({
           where: { userId },
           data: { profilePhotoUrl },

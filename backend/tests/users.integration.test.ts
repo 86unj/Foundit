@@ -42,6 +42,11 @@ vi.mock('../src/utils/imageUrl', () => ({
   ),
 }));
 
+vi.mock('../src/lib/r2', () => ({
+  r2: { send: vi.fn() },
+  R2_BUCKET: 'test-bucket',
+}));
+
 vi.mock('../src/db', () => ({
   prisma: {
     user: {
@@ -53,6 +58,7 @@ vi.mock('../src/db', () => ({
 }));
 
 import { prisma } from '../src/db';
+import { r2 } from '../src/lib/r2';
 import { writeAuditLog } from '../src/utils/auditLog';
 import { auditSummaries } from '../src/utils/auditSummaries';
 
@@ -338,6 +344,11 @@ describe('users routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.profilePhotoUrl).toBeNull();
+      expect(r2.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: { Bucket: 'test-bucket', Key: avatarKey },
+        })
+      );
       expect(writeAuditLog).toHaveBeenCalledWith(
         expect.objectContaining({
           actorRole: 'student',

@@ -96,8 +96,7 @@ async function findActiveSession(token: string) {
 async function createPresignedReportUpload(
   key: string,
   contentType: string,
-  fileSizeKb: number,
-  fileSizeBytes: number
+  fileSizeKb: number
 ) {
   const ext = contentType.split('/')[1];
 
@@ -105,12 +104,10 @@ async function createPresignedReportUpload(
     Bucket: R2_BUCKET,
     Key: key,
     ContentType: contentType,
-    ContentLength: fileSizeBytes,
   });
 
   const uploadUrl = await getSignedUrl(r2, command, {
     expiresIn: 60 * 60,
-    signableHeaders: new Set(['content-type', 'content-length']),
   });
 
   return {
@@ -247,10 +244,9 @@ router.post(
         return;
       }
 
-      const { contentType, fileSizeKb, fileSizeBytes } = req.body as {
+      const { contentType, fileSizeKb } = req.body as {
         contentType: string;
         fileSizeKb: number;
-        fileSizeBytes: number;
       };
 
       try {
@@ -280,8 +276,7 @@ router.post(
           const result = await createPresignedReportUpload(
             placeholder.imageUrl,
             contentType,
-            fileSizeKb,
-            fileSizeBytes
+            fileSizeKb
           );
           await writeAuditLogBestEffort({
             actorType: 'anonymous',
