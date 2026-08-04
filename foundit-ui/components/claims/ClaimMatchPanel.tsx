@@ -24,6 +24,8 @@ interface ClaimMatchPanelProps {
   confirming?: boolean;
 }
 
+const AI_PAGE_SIZE = 3;
+
 const tabStyles = {
   px: 4,
   py: 2,
@@ -45,10 +47,21 @@ export function ClaimMatchPanel({
   confirming = false,
 }: ClaimMatchPanelProps) {
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('ai');
+  const [aiVisibleCount, setAiVisibleCount] = useState(AI_PAGE_SIZE);
+  const [suggestionsSnapshot, setSuggestionsSnapshot] = useState(suggestions);
+
+  // Reset pagination when the suggestions list identity changes (render-time
+  // adjustment — avoids setState-in-effect cascading renders).
+  if (suggestions !== suggestionsSnapshot) {
+    setSuggestionsSnapshot(suggestions);
+    setAiVisibleCount(AI_PAGE_SIZE);
+  }
 
   const canConfirm = Boolean(selectedItemId);
   const showMatchActions = variant === 'review' || canConfirm;
   const showFooter = showMatchActions || Boolean(onCloseClaim);
+  const visibleSuggestions = suggestions.slice(0, aiVisibleCount);
+  const hasMoreAiMatches = suggestions.length > aiVisibleCount;
 
   function handleSelectItem(itemId: string) {
     onSelectItem(selectedItemId === itemId ? null : itemId);
@@ -86,7 +99,7 @@ export function ClaimMatchPanel({
       {activeTab === 'ai' ? (
         suggestions.length > 0 ? (
           <Stack gap={3}>
-            {suggestions.map((match, index) => (
+            {visibleSuggestions.map((match, index) => (
               <ClaimMatchCard
                 key={match.matchId}
                 match={match}
@@ -96,6 +109,19 @@ export function ClaimMatchPanel({
                 onSelect={() => handleSelectItem(match.itemId)}
               />
             ))}
+            {hasMoreAiMatches ? (
+              <Flex justify="center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setAiVisibleCount((count) => count + AI_PAGE_SIZE)
+                  }
+                >
+                  Show more
+                </Button>
+              </Flex>
+            ) : null}
           </Stack>
         ) : (
           <ClaimMatchEmptyState searching={generating} />
