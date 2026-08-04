@@ -51,6 +51,7 @@ beforeEach(() => {
   fetchNotificationsMock.mockResolvedValue({
     notifications: [unread, read],
     unreadCount: 1,
+    nextCursor: null,
   });
 });
 
@@ -63,7 +64,55 @@ describe('useNotifications', () => {
 
     expect(result.current.notifications).toHaveLength(2);
     expect(result.current.unreadCount).toBe(1);
+    expect(result.current.nextCursor).toBeNull();
     expect(result.current.error).toBeNull();
+    expect(fetchNotificationsMock).toHaveBeenCalledWith({
+      unreadOnly: false,
+      limit: 10,
+    });
+  });
+
+  it('passes unreadOnly when filtering', async () => {
+    const { result } = renderHook(() => useNotifications({ unreadOnly: true }));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(fetchNotificationsMock).toHaveBeenCalledWith({
+      unreadOnly: true,
+      limit: 10,
+    });
+  });
+
+  it('appends the next page via loadMore', async () => {
+    const page2: AppNotification = {
+      ...read,
+      notificationId: 'n-3',
+      title: 'Older notice',
+    };
+    fetchNotificationsMock
+      .mockResolvedValueOnce({
+        notifications: [unread, read],
+        unreadCount: 1,
+        nextCursor: 'n-2',
+      })
+      .mockResolvedValueOnce({
+        notifications: [page2],
+        unreadCount: 1,
+        nextCursor: null,
+      });
+
+    const { result } = renderHook(() => useNotifications());
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.nextCursor).toBe('n-2');
+
+    await act(() => result.current.loadMore());
+
+    await waitFor(() => expect(result.current.nextCursor).toBeNull());
+    expect(result.current.notifications).toHaveLength(3);
+    expect(fetchNotificationsMock).toHaveBeenLastCalledWith({
+      unreadOnly: false,
+      cursor: 'n-2',
+      limit: 10,
+    });
   });
 
   it('exposes an error message when loading fails', async () => {
@@ -176,6 +225,7 @@ describe('useNotifications', () => {
     fetchNotificationsMock.mockResolvedValue({
       notifications: [read],
       unreadCount: 0,
+      nextCursor: null,
     });
 
     const { result } = renderHook(() => useNotifications());

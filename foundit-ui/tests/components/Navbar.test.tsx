@@ -25,6 +25,7 @@ beforeEach(() => {
   fetchNotificationsMock.mockResolvedValue({
     notifications: [],
     unreadCount: 3,
+    nextCursor: null,
   });
 });
 

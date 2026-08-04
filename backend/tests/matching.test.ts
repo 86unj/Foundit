@@ -19,12 +19,12 @@ describe('matching scores', () => {
     expect(result).toEqual({ score: 0.5, valid: true });
   });
 
-  test('dateProximityScore rejects impossible found-before-lost dates', () => {
+  test('dateProximityScore soft-penalizes found-before-lost dates', () => {
     const result = dateProximityScore(
       new Date('2026-07-10T00:00:00.000Z'),
       new Date('2026-07-01T00:00:00.000Z')
     );
-    expect(result).toEqual({ score: 0, valid: false });
+    expect(result).toEqual({ score: 0.1, valid: true });
   });
 
   test('combineHybridScore returns a 0-100 score', () => {
