@@ -58,9 +58,12 @@ function ManualSearchRow({ item, selected, onSelect }: ManualSearchRowProps) {
           type="radio"
           name="manual-item-search"
           checked={selected}
-          onChange={onSelect}
+          readOnly
+          onClick={(e) => {
+            e.stopPropagation();
+            onSelect();
+          }}
           accentColor="var(--chakra-colors-blue-500)"
-          onClick={(e) => e.stopPropagation()}
         />
         <Flex
           w="48px"
@@ -162,6 +165,7 @@ export function ClaimManualSearchList({
   onSelectItem,
 }: ClaimManualSearchListProps) {
   const [categories, setCategories] = useState<CategoryStat[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [items, setItems] = useState<SecurityItemListItem[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState(claim.category);
@@ -180,6 +184,8 @@ export function ClaimManualSearchList({
         setCategories(data);
       } catch {
         if (active) setCategories([]);
+      } finally {
+        if (active) setCategoriesLoaded(true);
       }
     }
 
@@ -189,7 +195,23 @@ export function ClaimManualSearchList({
     };
   }, []);
 
+  // Category options only include categories that already have stored items.
+  // If the claim category is missing from that list, treat the filter as
+  // "All categories" so the select value and API query stay in sync.
+  const resolvedCategoryFilter = useMemo(() => {
+    if (!categoriesLoaded) return categoryFilter;
+    if (
+      categoryFilter &&
+      !categories.some((category) => category.category === categoryFilter)
+    ) {
+      return '';
+    }
+    return categoryFilter;
+  }, [categories, categoriesLoaded, categoryFilter]);
+
   useEffect(() => {
+    if (!categoriesLoaded) return;
+
     let active = true;
 
     async function loadItems() {
@@ -198,9 +220,9 @@ export function ClaimManualSearchList({
 
       try {
         const result = await fetchSecurityItems({
-          category: categoryFilter.trim() || undefined,
+          category: resolvedCategoryFilter.trim() || undefined,
           status: 'stored',
-          limit: 20,
+          limit: 5,
         });
 
         if (!active) return;
@@ -222,7 +244,7 @@ export function ClaimManualSearchList({
     return () => {
       active = false;
     };
-  }, [categoryFilter]);
+  }, [resolvedCategoryFilter, categoriesLoaded]);
 
   const filteredItems = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -246,10 +268,10 @@ export function ClaimManualSearchList({
 
     try {
       const result = await fetchSecurityItems({
-        category: categoryFilter.trim() || undefined,
+        category: resolvedCategoryFilter.trim() || undefined,
         status: 'stored',
         cursor: nextCursor,
-        limit: 20,
+        limit: 5,
       });
 
       setItems((current) => [...current, ...result.data]);
@@ -292,7 +314,7 @@ export function ClaimManualSearchList({
         </Box>
 
         <Select
-          value={categoryFilter}
+          value={resolvedCategoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
           h={10}
           px={3}

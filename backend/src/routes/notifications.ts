@@ -1,4 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import authenticate from '../middleware/authenticate';
 import {
@@ -22,6 +23,34 @@ const notificationSelect = {
   createdAt: true,
 } as const;
 
+const notificationListOrderBy: Prisma.NotificationOrderByWithRelationInput[] = [
+  { createdAt: 'desc' },
+  { notificationId: 'desc' },
+];
+
+async function getNotificationListCursorWhere(
+  cursorNotificationId: string
+): Promise<Prisma.NotificationWhereInput> {
+  const cursorNotification = await prisma.notification.findUnique({
+    where: { notificationId: cursorNotificationId },
+    select: { createdAt: true, notificationId: true },
+  });
+
+  if (!cursorNotification) {
+    return {};
+  }
+
+  return {
+    OR: [
+      { createdAt: { lt: cursorNotification.createdAt } },
+      {
+        createdAt: cursorNotification.createdAt,
+        notificationId: { lt: cursorNotification.notificationId },
+      },
+    ],
+  };
+}
+
 /**
  * @openapi
  * /api/notifications:
@@ -36,6 +65,19 @@ const notificationSelect = {
  *         schema:
  *           type: string
  *           enum: ['true', 'false']
+ *       - in: query
+ *         name: cursor
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: notificationId of the last item from the previous page
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 50
+ *           default: 10
  *     responses:
  *       '200':
  *         description: Notifications plus the caller's unread count
@@ -79,6 +121,10 @@ const notificationSelect = {
  *                         format: date-time
  *                 unreadCount:
  *                   type: integer
+ *                 nextCursor:
+ *                   type: string
+ *                   format: uuid
+ *                   nullable: true
  *       '400':
  *         description: Invalid query parameters
  *       '401':
@@ -91,16 +137,26 @@ router.get(
   async (req, res, next) => {
     try {
       const recipientId = req.user!.user_id;
-      const { unreadOnly } = req.query as ListNotificationsQuery;
+      const { unreadOnly, cursor, limit } =
+        req.query as unknown as ListNotificationsQuery;
+
+      const baseWhere: Prisma.NotificationWhereInput = {
+        recipientId,
+        dismissedAt: null,
+        ...(unreadOnly === 'true' ? { isRead: false } : {}),
+      };
+
+      const cursorWhere = cursor
+        ? await getNotificationListCursorWhere(cursor)
+        : {};
 
       const [notifications, unreadCount] = await Promise.all([
         prisma.notification.findMany({
           where: {
-            recipientId,
-            dismissedAt: null,
-            ...(unreadOnly === 'true' ? { isRead: false } : {}),
+            AND: [baseWhere, cursorWhere],
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: notificationListOrderBy,
+          take: limit + 1,
           select: notificationSelect,
         }),
         prisma.notification.count({
@@ -108,7 +164,16 @@ router.get(
         }),
       ]);
 
-      res.status(200).json({ notifications, unreadCount });
+      const nextCursor =
+        notifications.length > limit
+          ? notifications[limit].notificationId
+          : null;
+
+      res.status(200).json({
+        notifications: notifications.slice(0, limit),
+        unreadCount,
+        nextCursor,
+      });
     } catch (err) {
       next(err);
     }

@@ -27,6 +27,7 @@ vi.mock('../src/db', () => ({
   prisma: {
     notification: {
       findMany: vi.fn(),
+      findUnique: vi.fn(),
       count: vi.fn(),
       findFirst: vi.fn(),
       update: vi.fn(),
@@ -81,13 +82,17 @@ describe('notifications routes', () => {
 
     expect(res.status).toBe(200);
     expect(res.body.unreadCount).toBe(3);
+    expect(res.body.nextCursor).toBeNull();
     expect(res.body.notifications).toHaveLength(1);
     expect(res.body.notifications[0].title).toBe('New Claim Submitted');
 
     expect(prisma.notification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { recipientId: 'user-1', dismissedAt: null },
-        orderBy: { createdAt: 'desc' },
+        where: {
+          AND: [{ recipientId: 'user-1', dismissedAt: null }, {}],
+        },
+        orderBy: [{ createdAt: 'desc' }, { notificationId: 'desc' }],
+        take: 11,
       })
     );
     expect(prisma.notification.count).toHaveBeenCalledWith({
@@ -107,9 +112,54 @@ describe('notifications routes', () => {
     expect(prisma.notification.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          recipientId: 'user-1',
-          isRead: false,
-          dismissedAt: null,
+          AND: [
+            { recipientId: 'user-1', dismissedAt: null, isRead: false },
+            {},
+          ],
+        },
+      })
+    );
+  });
+
+  test('GET /api/notifications paginates with cursor and nextCursor', async () => {
+    const page = Array.from({ length: 3 }, (_, i) => ({
+      ...unreadNotification,
+      notificationId: `550e8400-e29b-41d4-a716-44665544011${i}`,
+    }));
+    (prisma.notification.findMany as Mock).mockResolvedValue(page);
+    (prisma.notification.count as Mock).mockResolvedValue(10);
+    (prisma.notification.findUnique as Mock).mockResolvedValue({
+      notificationId,
+      createdAt: unreadNotification.createdAt,
+    });
+
+    const res = await request(createTestApp()).get(
+      `/api/notifications?limit=2&cursor=${notificationId}`
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.body.notifications).toHaveLength(2);
+    expect(res.body.nextCursor).toBe(page[2].notificationId);
+    expect(prisma.notification.findUnique).toHaveBeenCalledWith({
+      where: { notificationId },
+      select: { createdAt: true, notificationId: true },
+    });
+    expect(prisma.notification.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        take: 3,
+        where: {
+          AND: [
+            { recipientId: 'user-1', dismissedAt: null },
+            {
+              OR: [
+                { createdAt: { lt: unreadNotification.createdAt } },
+                {
+                  createdAt: unreadNotification.createdAt,
+                  notificationId: { lt: notificationId },
+                },
+              ],
+            },
+          ],
         },
       })
     );
@@ -118,6 +168,15 @@ describe('notifications routes', () => {
   test('GET /api/notifications rejects an invalid unreadOnly value', async () => {
     const res = await request(createTestApp()).get(
       '/api/notifications?unreadOnly=maybe'
+    );
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('VALIDATION_ERROR');
+  });
+
+  test('GET /api/notifications rejects an invalid cursor', async () => {
+    const res = await request(createTestApp()).get(
+      '/api/notifications?cursor=not-a-uuid'
     );
 
     expect(res.status).toBe(400);

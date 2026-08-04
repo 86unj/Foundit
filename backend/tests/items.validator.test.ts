@@ -74,10 +74,30 @@ describe('items validators', () => {
       category: 'Electronics',
       locationFound: 'Library',
       dateFound: '2026-07-01',
-      images: [],
+      images: [
+        {
+          imageUrl: 'reports/11111111-1111-1111-1111-111111111111.jpg',
+          fileType: 'jpg',
+          fileSizeKb: 120,
+        },
+      ],
     });
 
     expect(result.success).toBe(true);
+  });
+
+  test('rejects create security item with no images', () => {
+    const result = createSecurityItemSchema.safeParse({
+      campusId: uuid,
+      title: 'iPhone',
+      description: 'Black iPhone found near library',
+      category: 'Electronics',
+      locationFound: 'Library',
+      dateFound: '2026-07-01',
+      images: [],
+    });
+
+    expect(result.success).toBe(false);
   });
 
   test('rejects empty title when creating item', () => {
@@ -88,7 +108,13 @@ describe('items validators', () => {
       category: 'Electronics',
       locationFound: 'Library',
       dateFound: '2026-07-01',
-      images: [],
+      images: [
+        {
+          imageUrl: 'reports/11111111-1111-1111-1111-111111111111.jpg',
+          fileType: 'jpg',
+          fileSizeKb: 120,
+        },
+      ],
     });
 
     expect(result.success).toBe(false);

@@ -1,14 +1,15 @@
 import {
   Box,
+  Checkmark,
   Circle,
   Flex,
   HStack,
+  IconButton,
   Text,
   VStack,
-  Checkmark,
-  Checkbox,
 } from '@chakra-ui/react';
 import type { KeyboardEvent, MouseEvent } from 'react';
+import { LuX } from 'react-icons/lu';
 import { getRelativeTime } from '@/utils/relativeDate';
 
 interface NotificationCardProps {
@@ -20,8 +21,8 @@ interface NotificationCardProps {
   onClick?: () => void;
   /** Fires when the status circle is clicked — toggles read ⇄ unread. */
   onToggleRead?: () => void;
-  selected?: boolean;
-  onSelectedChange?: (selected: boolean) => void;
+  /** Fires when the dismiss (×) control is clicked. */
+  onDismiss?: () => void;
 }
 
 export default function NotificationCard({
@@ -31,8 +32,7 @@ export default function NotificationCard({
   createdAt,
   onClick,
   onToggleRead,
-  selected = false,
-  onSelectedChange,
+  onDismiss,
 }: NotificationCardProps) {
   const handleCardKeyDown = (event: KeyboardEvent) => {
     if (onClick && (event.key === 'Enter' || event.key === ' ')) {
@@ -43,14 +43,18 @@ export default function NotificationCard({
 
   const handleCardClick = (event: MouseEvent) => {
     const target = event.target as HTMLElement;
-    if (target.closest('[data-notification-selection]')) return;
+    if (target.closest('[data-notification-action]')) return;
     onClick?.();
   };
 
   const handleToggleClick = (event: MouseEvent) => {
-    // Don't let the card's mark-read onClick swallow the toggle.
     event.stopPropagation();
     onToggleRead?.();
+  };
+
+  const handleDismissClick = (event: MouseEvent) => {
+    event.stopPropagation();
+    onDismiss?.();
   };
 
   const statusCircle = isRead ? (
@@ -77,38 +81,30 @@ export default function NotificationCard({
       onClick={onClick ? handleCardClick : undefined}
       onKeyDown={handleCardKeyDown}
     >
-      <Box w="4px" bg={isRead ? 'transparent' : 'blue.500'} />
-      <HStack w="full" px={6} py={4} gap={4} align="center">
-        {onSelectedChange ? (
-          <Checkbox.Root
-            checked={selected}
-            aria-label={`Select ${title}`}
-            data-notification-selection
-            onKeyDown={(event) => event.stopPropagation()}
-            onCheckedChange={(event) =>
-              onSelectedChange(Boolean(event.checked))
-            }
-          >
-            <Checkbox.HiddenInput />
-            <Checkbox.Control />
-          </Checkbox.Root>
-        ) : null}
-        {/* Read / unread status — a toggle button when the feed wires it up. */}
+      <Box w="4px" bg={isRead ? 'transparent' : 'blue.500'} flexShrink={0} />
+      <HStack w="full" px={6} py={4} gap={3} align="center" minW={0}>
         {onToggleRead ? (
           <Box
             as="button"
+            data-notification-action
             aria-label={isRead ? 'Mark as unread' : 'Mark as read'}
             cursor="pointer"
+            flexShrink={0}
             onClick={handleToggleClick}
+            onKeyDown={(event) => event.stopPropagation()}
           >
             {statusCircle}
           </Box>
         ) : (
-          statusCircle
+          <Box flexShrink={0}>{statusCircle}</Box>
         )}
 
-        <VStack align="start" gap={1} flex={1}>
-          <Text fontSize="sm" fontWeight="semibold" color="fg">
+        <VStack align="start" gap={1} flex={1} minW={0}>
+          <Text
+            fontSize="sm"
+            fontWeight={isRead ? 'medium' : 'semibold'}
+            color={isRead ? 'gray.700' : 'fg'}
+          >
             {title}
           </Text>
 
@@ -117,9 +113,32 @@ export default function NotificationCard({
           </Text>
         </VStack>
 
-        <Text fontSize="xs" color="gray.500" whiteSpace="nowrap">
+        <Text
+          fontSize="xs"
+          color="gray.500"
+          whiteSpace="nowrap"
+          flexShrink={0}
+          alignSelf="flex-start"
+          pt={0.5}
+        >
           {getRelativeTime(createdAt)}
         </Text>
+
+        {onDismiss ? (
+          <IconButton
+            type="button"
+            data-notification-action
+            aria-label={`Dismiss ${title}`}
+            variant="ghost"
+            size="xs"
+            color="gray.500"
+            flexShrink={0}
+            onClick={handleDismissClick}
+            onKeyDown={(event) => event.stopPropagation()}
+          >
+            <LuX size={16} />
+          </IconButton>
+        ) : null}
       </HStack>
     </Flex>
   );

@@ -17,12 +17,14 @@ interface ClaimMatchPanelProps {
   variant: MatchPanelVariant;
   suggestions: MatchSuggestion[];
   selectedItemId: string | null;
-  onSelectItem: (itemId: string) => void;
+  onSelectItem: (itemId: string | null) => void;
   onConfirmMatch: () => void | Promise<void>;
   onCloseClaim?: () => void;
   generating?: boolean;
   confirming?: boolean;
 }
+
+const AI_PAGE_SIZE = 3;
 
 const tabStyles = {
   px: 4,
@@ -45,10 +47,25 @@ export function ClaimMatchPanel({
   confirming = false,
 }: ClaimMatchPanelProps) {
   const [activeTab, setActiveTab] = useState<'ai' | 'manual'>('ai');
+  const [aiVisibleCount, setAiVisibleCount] = useState(AI_PAGE_SIZE);
+  const [suggestionsSnapshot, setSuggestionsSnapshot] = useState(suggestions);
+
+  // Reset pagination when the suggestions list identity changes (render-time
+  // adjustment — avoids setState-in-effect cascading renders).
+  if (suggestions !== suggestionsSnapshot) {
+    setSuggestionsSnapshot(suggestions);
+    setAiVisibleCount(AI_PAGE_SIZE);
+  }
 
   const canConfirm = Boolean(selectedItemId);
   const showMatchActions = variant === 'review' || canConfirm;
   const showFooter = showMatchActions || Boolean(onCloseClaim);
+  const visibleSuggestions = suggestions.slice(0, aiVisibleCount);
+  const hasMoreAiMatches = suggestions.length > aiVisibleCount;
+
+  function handleSelectItem(itemId: string) {
+    onSelectItem(selectedItemId === itemId ? null : itemId);
+  }
 
   return (
     <ClaimCard>
@@ -82,16 +99,29 @@ export function ClaimMatchPanel({
       {activeTab === 'ai' ? (
         suggestions.length > 0 ? (
           <Stack gap={3}>
-            {suggestions.map((match, index) => (
+            {visibleSuggestions.map((match, index) => (
               <ClaimMatchCard
                 key={match.matchId}
                 match={match}
                 rank={index + 1}
                 isBestMatch={index === 0}
                 selected={selectedItemId === match.itemId}
-                onSelect={() => onSelectItem(match.itemId)}
+                onSelect={() => handleSelectItem(match.itemId)}
               />
             ))}
+            {hasMoreAiMatches ? (
+              <Flex justify="center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setAiVisibleCount((count) => count + AI_PAGE_SIZE)
+                  }
+                >
+                  Show more
+                </Button>
+              </Flex>
+            ) : null}
           </Stack>
         ) : (
           <ClaimMatchEmptyState searching={generating} />
@@ -100,7 +130,7 @@ export function ClaimMatchPanel({
         <ClaimManualSearchList
           claim={claim}
           selectedItemId={selectedItemId}
-          onSelectItem={onSelectItem}
+          onSelectItem={handleSelectItem}
         />
       )}
 

@@ -35,6 +35,19 @@ describe('sendVerificationEmail', () => {
     await sendVerificationEmail('student@myseneca.ca', 'token-123', true);
 
     expect(sendMail).toHaveBeenCalledTimes(1);
+    expect(sendMail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        from: '"Foundit" <smtp-user>',
+        to: 'student@myseneca.ca',
+        subject: 'Verify your Foundit account',
+        text: expect.stringContaining('Verify Email:'),
+        html: expect.stringContaining('Verify Email'),
+      })
+    );
+    expect(sendMail.mock.calls[0]?.[0]?.html).toContain('#009adb');
+    expect(sendMail.mock.calls[0]?.[0]?.html).toContain(
+      'https://foundit.example/api/auth/verify-email?token=token-123'
+    );
   });
 
   test('sends notification emails', async () => {

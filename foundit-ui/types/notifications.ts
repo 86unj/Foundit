@@ -20,4 +20,11 @@ export interface AppNotification {
 export interface NotificationListResponse {
   notifications: AppNotification[];
   unreadCount: number;
+  nextCursor: string | null;
+}
+
+export interface FetchNotificationsOptions {
+  unreadOnly?: boolean;
+  cursor?: string;
+  limit?: number;
 }

@@ -41,15 +41,20 @@ function hookState(
   return {
     notifications,
     unreadCount: 1,
+    nextCursor: null,
     isLoading: false,
+    isLoadingMore: false,
     error: null,
     markRead: vi.fn(),
     markUnread: vi.fn(),
     markAllRead: vi.fn(),
     dismiss: vi.fn(),
+    loadMore: vi.fn(),
     reload: vi.fn(),
     ...overrides,
-  };
+    // Spread of Partial<> widens required fields to `| undefined`; assert the
+    // completed mock object back to the hook return type.
+  } as ReturnType<typeof useNotifications>;
 }
 
 beforeEach(() => {
@@ -65,25 +70,35 @@ describe('NotificationFeed', () => {
     expect(screen.getByText('New Claim Submitted')).toBeDefined();
     expect(screen.getByText('Match found')).toBeDefined();
     expect(screen.getByText('Unread ( 1 )')).toBeDefined();
+    expect(useNotificationsMock).toHaveBeenCalledWith({ unreadOnly: false });
   });
 
-  it('filters to unread cards when the Unread button is toggled', () => {
+  it('shows only Unread and Mark all as read in the toolbar', () => {
+    useNotificationsMock.mockReturnValue(hookState());
+
+    renderWithProvider(<NotificationFeed />);
+
+    expect(screen.getByRole('button', { name: 'Unread ( 1 )' })).toBeDefined();
+    expect(
+      screen.getByRole('button', { name: 'Mark all as read' })
+    ).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Select' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Delete/ })).toBeNull();
+  });
+
+  it('passes unreadOnly when the Unread button is toggled', () => {
     useNotificationsMock.mockReturnValue(hookState());
 
     renderWithProvider(<NotificationFeed />);
     fireEvent.click(screen.getByRole('button', { name: 'Unread ( 1 )' }));
 
-    expect(screen.getByText('New Claim Submitted')).toBeDefined();
-    expect(screen.queryByText('Match found')).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Unread ( 1 )' }));
-    expect(screen.getByText('Match found')).toBeDefined();
+    expect(useNotificationsMock).toHaveBeenLastCalledWith({ unreadOnly: true });
   });
 
   it('shows the filtered empty state when everything is read', () => {
     useNotificationsMock.mockReturnValue(
       hookState({
-        notifications: notifications.map((n) => ({ ...n, isRead: true })),
+        notifications: [],
         unreadCount: 0,
       })
     );
@@ -125,29 +140,26 @@ describe('NotificationFeed', () => {
     expect(state.markAllRead).toHaveBeenCalledTimes(1);
   });
 
-  it('selects notification cards and removes the selected notifications', async () => {
+  it('dismisses a notification from its close button', async () => {
     const state = hookState();
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
     fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+      screen.getByRole('button', { name: 'Dismiss New Claim Submitted' })
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Delete (1)' }));
 
     expect(state.dismiss).toHaveBeenCalledWith(['n-1']);
   });
 
-  it('selects all visible notification cards', async () => {
-    const state = hookState();
+  it('shows Load more when nextCursor is set and calls loadMore', () => {
+    const state = hookState({ nextCursor: 'n-2' });
     useNotificationsMock.mockReturnValue(state);
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
 
-    expect(
-      await screen.findByRole('button', { name: 'Delete (2)' })
-    ).toBeDefined();
+    expect(state.loadMore).toHaveBeenCalledTimes(1);
   });
 
   it('shows the empty state when there are no notifications', () => {
@@ -158,8 +170,9 @@ describe('NotificationFeed', () => {
     renderWithProvider(<NotificationFeed />);
 
     expect(screen.getByText(/no notifications yet/i)).toBeDefined();
-    expect(screen.getByRole('checkbox', { name: 'Select' })).toBeDefined();
-    expect(screen.getByRole('button', { name: 'Delete' })).toBeDefined();
+    expect(
+      screen.getByRole('button', { name: 'Mark all as read' })
+    ).toBeDefined();
   });
 
   it('shows an error message when loading failed', () => {

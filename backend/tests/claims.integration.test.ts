@@ -775,9 +775,10 @@ describe('claims routes', () => {
     };
     const notification = {
       notificationId: '550e8400-e29b-41d4-a716-446655440092',
-      type: 'claim_status_update',
-      title: 'Claim status updated: approved',
-      message: 'Your claim for "iPhone 15" is now approved.',
+      type: 'match_found',
+      title: 'A match was found for your claim',
+      message:
+        'A found item has been matched to your claim. Visit the campus security office with your student ID during office hours to collect it.',
     };
     const tx = {
       item: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },

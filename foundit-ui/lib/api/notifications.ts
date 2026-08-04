@@ -1,14 +1,28 @@
 import { apiFetch } from '@/lib/api/client';
 import type {
   AppNotification,
+  FetchNotificationsOptions,
   NotificationListResponse,
 } from '@/types/notifications';
 
-export async function fetchNotifications(options?: {
-  unreadOnly?: boolean;
-}): Promise<NotificationListResponse> {
-  const query = options?.unreadOnly ? '?unreadOnly=true' : '';
-  return apiFetch<NotificationListResponse>(`/api/notifications${query}`);
+export async function fetchNotifications(
+  options?: FetchNotificationsOptions
+): Promise<NotificationListResponse> {
+  const params = new URLSearchParams();
+  if (options?.unreadOnly) {
+    params.set('unreadOnly', 'true');
+  }
+  if (options?.cursor) {
+    params.set('cursor', options.cursor);
+  }
+  if (options?.limit != null) {
+    params.set('limit', String(options.limit));
+  }
+
+  const query = params.toString();
+  return apiFetch<NotificationListResponse>(
+    `/api/notifications${query ? `?${query}` : ''}`
+  );
 }
 
 export async function markNotificationRead(

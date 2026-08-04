@@ -58,6 +58,9 @@ describe('campuses routes', () => {
     ]);
 
     expect(prisma.campus.findMany).toHaveBeenCalledWith({
+      where: {
+        campusId: { not: '00000000-0000-0000-0000-000000000000' },
+      },
       select: {
         campusId: true,
         campusName: true,

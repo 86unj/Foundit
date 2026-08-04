@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 
 import { describe, expect, it, vi } from 'vitest';
 import NotificationCard from '@/components/NotificationCard';
@@ -11,8 +11,17 @@ const baseProps = {
 };
 
 describe('NotificationCard', () => {
-  it('renders the title and message', () => {
+  it('renders the title and message when unread', () => {
     renderWithProvider(<NotificationCard {...baseProps} isRead={false} />);
+
+    expect(screen.getByText('New Claim Submitted')).toBeDefined();
+    expect(
+      screen.getByText('A claim was submitted by a student.')
+    ).toBeDefined();
+  });
+
+  it('still shows the message when read', () => {
+    renderWithProvider(<NotificationCard {...baseProps} isRead />);
 
     expect(screen.getByText('New Claim Submitted')).toBeDefined();
     expect(
@@ -74,40 +83,23 @@ describe('NotificationCard', () => {
     expect(screen.getByRole('button', { name: 'Mark as read' })).toBeDefined();
   });
 
-  it('changes selection without firing the card click', async () => {
+  it('dismiss fires onDismiss without firing the card onClick', () => {
     const onClick = vi.fn();
-    const onSelectedChange = vi.fn();
+    const onDismiss = vi.fn();
     renderWithProvider(
       <NotificationCard
         {...baseProps}
+        isRead={false}
         onClick={onClick}
-        onSelectedChange={onSelectedChange}
+        onDismiss={onDismiss}
       />
     );
 
     fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' })
+      screen.getByRole('button', { name: 'Dismiss New Claim Submitted' })
     );
 
-    await waitFor(() => expect(onSelectedChange).toHaveBeenCalledWith(true));
-    expect(onClick).not.toHaveBeenCalled();
-  });
-
-  it('does not trigger the card action from checkbox keyboard events', () => {
-    const onClick = vi.fn();
-    renderWithProvider(
-      <NotificationCard
-        {...baseProps}
-        onClick={onClick}
-        onSelectedChange={vi.fn()}
-      />
-    );
-
-    fireEvent.keyDown(
-      screen.getByRole('checkbox', { name: 'Select New Claim Submitted' }),
-      { key: ' ' }
-    );
-
+    expect(onDismiss).toHaveBeenCalledTimes(1);
     expect(onClick).not.toHaveBeenCalled();
   });
 });
