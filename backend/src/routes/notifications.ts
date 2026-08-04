@@ -23,8 +23,10 @@ const notificationSelect = {
   createdAt: true,
 } as const;
 
-const notificationListOrderBy: Prisma.NotificationOrderByWithRelationInput[] =
-  [{ createdAt: 'desc' }, { notificationId: 'desc' }];
+const notificationListOrderBy: Prisma.NotificationOrderByWithRelationInput[] = [
+  { createdAt: 'desc' },
+  { notificationId: 'desc' },
+];
 
 async function getNotificationListCursorWhere(
   cursorNotificationId: string

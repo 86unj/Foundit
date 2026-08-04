@@ -8,9 +8,9 @@
 
 A shared notification feed for both roles, rendered in the **Notifications tab of
 the profile page** (`/profile?tab=notifications`), plus a **navbar bell with an
-unread-count badge** on every authenticated page. Students see claim-status,
-match-found, and report-received updates; security staff see per-campus alerts
-(new claims, cancellations, expired retention).
+unread-count badge** on every authenticated page. Students see match-found,
+claim-status (rejected / picked up), and report-received updates; security staff
+see per-campus alerts (new claims, cancellations, expired retention).
 
 Routes/components:
 
@@ -24,15 +24,15 @@ Routes/components:
 
 ## 2. Who gets notified of what
 
-| Event                                                  | Recipient                                                          | Type                                      |
-| ------------------------------------------------------ | ------------------------------------------------------------------ | ----------------------------------------- |
-| Claim status changes (approved / rejected / picked up) | The claim's student                                                | `claim_status_update`                     |
-| Match approved for a claim                             | The claim's student                                                | `match_found` (+ status update)           |
-| New claim submitted                                    | Active security/admin at the claim's campus                        | `claim_status_update`                     |
-| Student cancels a claim                                | Active security/admin at the claim's campus                        | `claim_status_update` ("Claim Cancelled") |
-| Retention job expires items                            | Active security/admin at each affected campus (batched per campus) | `item_expiring`                           |
-| Retention job auto-rejects claims on expired items     | Each affected student                                              | `claim_status_update`                     |
-| Found-item report submitted                            | The finder                                                         | `report_confirmation`                     |
+| Event                                              | Recipient                                                          | Type                                      |
+| -------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------- |
+| Claim status changes (rejected / picked up)        | The claim's student                                                | `claim_status_update`                     |
+| Match / approval for a claim                       | The claim's student                                                | `match_found`                             |
+| New claim submitted                                | Active security/admin at the claim's campus                        | `claim_status_update`                     |
+| Student cancels a claim                            | Active security/admin at the claim's campus                        | `claim_status_update` ("Claim Cancelled") |
+| Retention job expires items                        | Active security/admin at each affected campus (batched per campus) | `item_expiring`                           |
+| Retention job auto-rejects claims on expired items | Each affected student                                              | `claim_status_update`                     |
+| Found-item report submitted                        | The finder                                                         | `report_confirmation`                     |
 
 Copy rule: messages name the item (`Your claim for "X" …`) and fall back to a
 short `#REF` — raw UUIDs never appear. Emissions run inside the triggering
