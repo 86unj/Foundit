@@ -44,7 +44,8 @@ export function ClaimPickupNoticeCard({
           <>
             <Text fontSize="sm" color="gray.600">
               Student notified to pick up in person at the {campusName} campus
-              security office.
+              security office. Approved claims expire automatically after 35
+              days if the item is not collected.
             </Text>
             <Text fontSize="sm" color="gray.700">
               <Text as="span" fontWeight="semibold">

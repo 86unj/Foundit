@@ -15,6 +15,7 @@ import adminUsersRouter from './routes/admin/users';
 import errorHandler from './middleware/errorHandler';
 import { startCleanupJob } from './jobs/cleanupUnverifiedUsers';
 import { startExpireRetainedItemsJob } from './jobs/expireRetainedItems';
+import { startExpireOpenClaimsJob } from './jobs/expireOpenClaims';
 import uploadsRouter from './routes/uploads';
 import photoSessionsRouter from './routes/photoSessions';
 import requestContext from './middleware/requestContext';
@@ -73,4 +74,5 @@ app.listen(PORT, () => {
   warnIfSemanticMatchingDegraded();
   startCleanupJob();
   startExpireRetainedItemsJob();
+  startExpireOpenClaimsJob();
 });

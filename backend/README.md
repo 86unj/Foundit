@@ -132,7 +132,8 @@ src/
 │   └── username.ts             # Unique username generator
 ├── jobs/
 │   ├── cleanupUnverifiedUsers.ts  # Daily cron job to delete unverified accounts
-│   └── expireRetainedItems.ts     # Daily cron: stored → expired when retention ends
+│   ├── expireRetainedItems.ts     # Daily cron: stored → expired when retention ends
+│   └── expireOpenClaims.ts        # Daily cron: open claims → rejected after 35 days
 ├── routes/
 │   ├── health.ts               # GET /api/health
 │   ├── auth.ts                 # POST /api/auth/login|register (done) · refresh|logout (stub)
@@ -286,6 +287,8 @@ Allowed targets: `expired`, `disposed`. Transitions: `stored → expired|dispose
 
 A daily cron job (`expireRetainedItems`) also transitions `stored → expired` when `retentionExpiryDate` has passed, with a defensive skip for stored items that already have an approved claim. Security should use `disposed` to record physical disposal after expiry.
 
+A second daily cron (`expireOpenClaims`) auto-rejects `submitted` / `under_review` claims that are still open **35 days after submission** (`createdAt`). Suggested matches for those claims are dismissed, and the student gets a `claim_status_update` notice. Approved, picked-up, and already-rejected claims are left alone.
+
 ### Notifications
 
 | Method | Path                                        | Auth | Status | Description                                                                             |
@@ -299,8 +302,9 @@ Notifications are per-recipient rows, always scoped to the caller's JWT. They ar
 created transactionally by: claim submission and cancellation (fan-out to active
 security/admin at the claim's campus), claim status changes and match approval
 (to the student), the retention cron (auto-reject notices + per-campus
-`item_expiring`), and found-item report submission (`report_confirmation` to the
-finder). The unread-count "stats" endpoint from the original plan was folded into
+`item_expiring`), the open-claim expiry cron (auto-reject after 35 days), and
+found-item report submission (`report_confirmation` to the finder). The
+unread-count "stats" endpoint from the original plan was folded into
 `GET /api/notifications` as `unreadCount`. Student claim emails also send when
 both `emailNotificationOptIn` and claim `notificationPreference === 'email'` are set.
 
