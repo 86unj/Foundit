@@ -6,9 +6,24 @@ import { useNotifications } from '@/hooks/useNotifications';
 import type { AppNotification } from '@/types/notifications';
 import { renderWithProvider } from '../testUtils';
 
+const pushMock = vi.fn();
+
 vi.mock('@/hooks/useNotifications', () => ({
   useNotifications: vi.fn(),
 }));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock }),
+}));
+
+vi.mock('@/utils/auth', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/utils/auth')>('@/utils/auth');
+  return {
+    ...actual,
+    getSessionRole: vi.fn(() => 'student' as const),
+  };
+});
 
 const useNotificationsMock = vi.mocked(useNotifications);
 
@@ -33,6 +48,16 @@ const notifications: AppNotification[] = [
     isRead: true,
     createdAt: '2026-07-08T12:00:00.000Z',
   },
+  {
+    notificationId: 'n-3',
+    type: 'item_expiring',
+    title: 'Item retention expired',
+    message: '1 stored item reached the end of retention.',
+    referenceType: null,
+    referenceId: null,
+    isRead: false,
+    createdAt: '2026-07-07T12:00:00.000Z',
+  },
 ];
 
 function hookState(
@@ -40,7 +65,7 @@ function hookState(
 ): ReturnType<typeof useNotifications> {
   return {
     notifications,
-    unreadCount: 1,
+    unreadCount: 2,
     nextCursor: null,
     isLoading: false,
     isLoadingMore: false,
@@ -52,8 +77,6 @@ function hookState(
     loadMore: vi.fn(),
     reload: vi.fn(),
     ...overrides,
-    // Spread of Partial<> widens required fields to `| undefined`; assert the
-    // completed mock object back to the hook return type.
   } as ReturnType<typeof useNotifications>;
 }
 
@@ -62,37 +85,37 @@ beforeEach(() => {
 });
 
 describe('NotificationFeed', () => {
-  it('renders a card per notification with the unread count', () => {
+  it('renders a card per notification with All and Unread filters', () => {
     useNotificationsMock.mockReturnValue(hookState());
 
     renderWithProvider(<NotificationFeed />);
 
     expect(screen.getByText('New Claim Submitted')).toBeDefined();
     expect(screen.getByText('Match found')).toBeDefined();
-    expect(screen.getByText('Unread ( 1 )')).toBeDefined();
+    expect(screen.getByRole('button', { name: 'All' })).toBeDefined();
+    expect(screen.getByRole('button', { name: 'Unread 2' })).toBeDefined();
     expect(useNotificationsMock).toHaveBeenCalledWith({ unreadOnly: false });
   });
 
-  it('shows only Unread and Mark all as read in the toolbar', () => {
+  it('passes unreadOnly when Unread is selected', () => {
     useNotificationsMock.mockReturnValue(hookState());
 
     renderWithProvider(<NotificationFeed />);
-
-    expect(screen.getByRole('button', { name: 'Unread ( 1 )' })).toBeDefined();
-    expect(
-      screen.getByRole('button', { name: 'Mark all as read' })
-    ).toBeDefined();
-    expect(screen.queryByRole('button', { name: 'Select' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Delete/ })).toBeNull();
-  });
-
-  it('passes unreadOnly when the Unread button is toggled', () => {
-    useNotificationsMock.mockReturnValue(hookState());
-
-    renderWithProvider(<NotificationFeed />);
-    fireEvent.click(screen.getByRole('button', { name: 'Unread ( 1 )' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unread 2' }));
 
     expect(useNotificationsMock).toHaveBeenLastCalledWith({ unreadOnly: true });
+  });
+
+  it('returns to All when All is selected after Unread', () => {
+    useNotificationsMock.mockReturnValue(hookState());
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByRole('button', { name: 'Unread 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
+
+    expect(useNotificationsMock).toHaveBeenLastCalledWith({
+      unreadOnly: false,
+    });
   });
 
   it('shows the filtered empty state when everything is read', () => {
@@ -104,23 +127,12 @@ describe('NotificationFeed', () => {
     );
 
     renderWithProvider(<NotificationFeed />);
-    fireEvent.click(screen.getByRole('button', { name: 'Unread ( 0 )' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Unread 0' }));
 
     expect(screen.getByText('No unread notifications.')).toBeDefined();
   });
 
-  it("toggling a read card's circle calls markUnread", () => {
-    const state = hookState();
-    useNotificationsMock.mockReturnValue(state);
-
-    renderWithProvider(<NotificationFeed />);
-    fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }));
-
-    expect(state.markUnread).toHaveBeenCalledWith('n-2');
-    expect(state.markRead).not.toHaveBeenCalled();
-  });
-
-  it('marks a notification read when its card is clicked', async () => {
+  it('marks read and navigates when a linkable card is clicked', () => {
     const state = hookState();
     useNotificationsMock.mockReturnValue(state);
 
@@ -128,6 +140,18 @@ describe('NotificationFeed', () => {
     fireEvent.click(screen.getByText('New Claim Submitted'));
 
     expect(state.markRead).toHaveBeenCalledWith('n-1');
+    expect(pushMock).toHaveBeenCalledWith('/student/my-claims?claimId=c-1');
+  });
+
+  it('marks read without navigating for non-linkable cards', () => {
+    const state = hookState();
+    useNotificationsMock.mockReturnValue(state);
+
+    renderWithProvider(<NotificationFeed />);
+    fireEvent.click(screen.getByText('Item retention expired'));
+
+    expect(state.markRead).toHaveBeenCalledWith('n-3');
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('marks everything read via the header link', async () => {

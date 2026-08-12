@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Box,
   Flex,
@@ -30,7 +30,17 @@ const Select = chakra('select');
 const CLAIMS_PER_PAGE = 10;
 
 export default function StudentMyClaimsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentMyClaimsContent />
+    </Suspense>
+  );
+}
+
+function StudentMyClaimsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const claimIdFromQuery = searchParams.get('claimId');
   const isLoggedIn = !!getAccessToken();
   const [isNavigatingToClaim, setIsNavigatingToClaim] = useState(false);
 
@@ -44,13 +54,38 @@ export default function StudentMyClaimsPage() {
     useState<SecurityClaimListItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+  // Deep link from notifications: /student/my-claims?claimId=<uuid>
+  const claimFromQuery = useMemo(() => {
+    if (loading || !claimIdFromQuery) {
+      return null;
+    }
+    return claims.find((claim) => claim.claimId === claimIdFromQuery) ?? null;
+  }, [loading, claimIdFromQuery, claims]);
+
+  const detailClaim = selectedClaim ?? claimFromQuery;
+  const detailOpen = isDetailOpen || claimFromQuery !== null;
+
   function openClaimDetail(claim: SecurityClaimListItem) {
     setSelectedClaim(claim);
     setIsDetailOpen(true);
   }
 
+  function clearClaimIdQuery() {
+    const params = new URLSearchParams(searchParams.toString());
+    if (!params.has('claimId')) {
+      return;
+    }
+    params.delete('claimId');
+    const query = params.toString();
+    router.replace(
+      query ? `/student/my-claims?${query}` : '/student/my-claims'
+    );
+  }
+
   function closeClaimDetail() {
     setIsDetailOpen(false);
+    setSelectedClaim(null);
+    clearClaimIdQuery();
   }
 
   useEffect(() => {
@@ -417,8 +452,8 @@ export default function StudentMyClaimsPage() {
         </Stack>
 
         <ClaimDetailModal
-          claim={selectedClaim}
-          isOpen={isDetailOpen}
+          claim={detailClaim}
+          isOpen={detailOpen}
           onClose={closeClaimDetail}
           onCancelled={(claimId) => {
             setClaims((prev) => prev.filter((c) => c.claimId !== claimId));

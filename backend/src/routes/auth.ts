@@ -360,11 +360,6 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
       data.firstName,
       data.lastName
     );
-    const securityEmails = ['rvelasco6@myseneca.ca'];
-    const role = securityEmails.includes(data.email.toLowerCase())
-      ? 'security'
-      : 'student';
-
     const verifyToken = generateVerifyToken();
     const verifyTokenHash = hashTokenForStorage(verifyToken);
     let user;
@@ -376,7 +371,7 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
             email: normalizedEmail,
             passwordHash,
             username,
-            role,
+            role: 'student',
             firstName: data.firstName,
             lastName: data.lastName,
             // campusId is optional at registration — null until assigned by an admin
