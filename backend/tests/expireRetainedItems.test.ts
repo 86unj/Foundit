@@ -23,20 +23,6 @@ function createTx() {
         },
       ]),
     },
-    claim: {
-      findMany: vi.fn().mockResolvedValue([
-        {
-          claimId: '550e8400-e29b-41d4-a716-446655440000',
-          studentId: 'student-1',
-          itemName: 'iPhone 15',
-          itemId: 'item-1',
-        },
-      ]),
-      updateMany: vi.fn(),
-    },
-    matchSuggestion: {
-      updateMany: vi.fn(),
-    },
     notification: {
       createMany: vi.fn(),
     },
@@ -62,7 +48,7 @@ describe('expireDueItems notifications', () => {
     vi.clearAllMocks();
   });
 
-  test('notifies auto-rejected students and campus security', async () => {
+  test('marks items expired and notifies campus security without closing claims', async () => {
     (prisma.item.findMany as Mock).mockResolvedValue([
       { itemId: 'item-1', retentionExpiryDate: new Date('2026-07-01') },
     ]);
@@ -78,9 +64,11 @@ describe('expireDueItems notifications', () => {
     expect(tx.notification.createMany).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
-          recipientId: 'student-1',
-          type: 'claim_status_update',
-          message: 'Your claim for "iPhone 15" is now rejected.',
+          recipientId: 'security-1',
+          type: 'item_expiring',
+          title: 'Item retention expired',
+          message:
+            '1 stored item reached the end of retention and was marked expired.',
         }),
       ],
     });
@@ -98,46 +86,16 @@ describe('expireDueItems notifications', () => {
             entityLabel: expect.stringContaining('campus-1'),
           }),
         }),
-        expect.objectContaining({
-          action: 'claim_status_updated',
-          actorType: 'system',
-          entityId: '550e8400-e29b-41d4-a716-446655440000',
-          runId: expect.any(String),
-          details: expect.objectContaining({
-            itemId: 'item-1',
-            entityLabel: 'iPhone 15',
-          }),
-        }),
       ])
+    );
+    expect(auditRows).not.toContainEqual(
+      expect.objectContaining({
+        action: 'claim_status_updated',
+      })
     );
     expect(
       auditRows.every((row) => !('actorRole' in (row.details ?? {})))
     ).toBe(true);
-    expect(new Set(auditRows.map((row) => row.runId))).toHaveProperty(
-      'size',
-      1
-    );
-    expect(tx.auditLog.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        action: 'notification_fanout_created',
-        actorType: 'system',
-        runId: auditRows[0].runId,
-        details: expect.objectContaining({
-          notificationType: 'claim_status_update',
-        }),
-      }),
-    });
-    expect(tx.notification.createMany).toHaveBeenCalledWith({
-      data: [
-        expect.objectContaining({
-          recipientId: 'security-1',
-          type: 'item_expiring',
-          title: 'Item retention expired',
-          message:
-            '1 stored item reached the end of retention and was marked expired.',
-        }),
-      ],
-    });
   });
 
   test('creates nothing when no items are due', async () => {
@@ -163,9 +121,6 @@ describe('expireDueItems notifications', () => {
     const count = await expireDueItems();
 
     expect(count).toBe(0);
-    expect(tx.claim.findMany).not.toHaveBeenCalled();
-    expect(tx.claim.updateMany).not.toHaveBeenCalled();
-    expect(tx.matchSuggestion.updateMany).not.toHaveBeenCalled();
     expect(tx.notification.createMany).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
     expect(tx.auditLog.createMany).not.toHaveBeenCalled();
@@ -204,16 +159,6 @@ describe('expireDueItems notifications', () => {
     const count = await expireDueItems();
 
     expect(count).toBe(1);
-    expect(tx.claim.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ itemId: { in: ['item-2'] } }),
-      })
-    );
-    expect(tx.matchSuggestion.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ itemId: { in: ['item-2'] } }),
-      })
-    );
     expect(tx.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ campusId: 'campus-current' }),

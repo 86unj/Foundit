@@ -20,10 +20,33 @@ import {
 const MIN_MATCH_SCORE = 55;
 const MAX_SUGGESTIONS = 10;
 
+/** Items still physically retained and eligible for matching / linking. */
+export const CLAIMABLE_ITEM_STATUSES = [
+  ItemStatus.stored,
+  ItemStatus.expired,
+] as const;
+
 export interface GeneratedMatchCandidate {
   itemId: string;
   score: number;
   criteria: string;
+}
+
+interface ScoredMatchCandidate extends GeneratedMatchCandidate {
+  status: ItemStatus;
+}
+
+/** Stored items first (by score), then expired (by score). */
+export function compareClaimableMatchCandidates(
+  left: Pick<ScoredMatchCandidate, 'status' | 'score'>,
+  right: Pick<ScoredMatchCandidate, 'status' | 'score'>
+): number {
+  const leftExpired = left.status === ItemStatus.expired ? 1 : 0;
+  const rightExpired = right.status === ItemStatus.expired ? 1 : 0;
+  if (leftExpired !== rightExpired) {
+    return leftExpired - rightExpired;
+  }
+  return right.score - left.score;
 }
 
 function getTodayUtcDate(): Date {
@@ -214,17 +237,14 @@ export async function generateMatchCandidates(claimId: string): Promise<{
   const today = getTodayUtcDate();
   const items = await prisma.item.findMany({
     where: {
-      status: ItemStatus.stored,
-      OR: [
-        { retentionExpiryDate: null },
-        { retentionExpiryDate: { gt: today } },
-      ],
+      status: { in: [...CLAIMABLE_ITEM_STATUSES] },
       claims: {
         none: { status: ClaimStatus.approved },
       },
     },
     select: {
       itemId: true,
+      status: true,
       category: true,
       dateFound: true,
       locationFound: true,
@@ -241,7 +261,7 @@ export async function generateMatchCandidates(claimId: string): Promise<{
 
   const { textEmbeddings, imageEmbeddings } =
     await resolveItemEmbeddings(items);
-  const scored: GeneratedMatchCandidate[] = [];
+  const scored: ScoredMatchCandidate[] = [];
 
   for (const item of items) {
     const itemEmbedding = textEmbeddings.get(item.itemId);
@@ -273,17 +293,31 @@ export async function generateMatchCandidates(claimId: string): Promise<{
       continue;
     }
 
+    const criteria = buildMatchCriteria(hybridInput);
     scored.push({
       itemId: item.itemId,
       score,
-      criteria: buildMatchCriteria(hybridInput),
+      criteria:
+        item.status === ItemStatus.expired
+          ? criteria
+            ? `${criteria},expired`
+            : 'expired'
+          : criteria,
+      status: item.status,
     });
   }
 
-  scored.sort((left, right) => right.score - left.score);
+  // Stored first (by score), then expired at the bottom (by score).
+  scored.sort(compareClaimableMatchCandidates);
 
   return {
-    candidates: scored.slice(0, MAX_SUGGESTIONS),
+    candidates: scored
+      .slice(0, MAX_SUGGESTIONS)
+      .map(({ itemId, score, criteria }) => ({
+        itemId,
+        score,
+        criteria,
+      })),
     candidateCount: items.length,
   };
 }

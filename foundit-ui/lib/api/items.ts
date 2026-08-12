@@ -58,9 +58,10 @@ export async function fetchPublicItems(
 }
 
 export interface FetchSecurityItemsParams {
-  status?: ItemStatus;
+  status?: ItemStatus | ItemStatus[];
   campusId?: string;
   category?: string;
+  q?: string;
   cursor?: string;
   limit?: number;
 }
@@ -70,9 +71,15 @@ export async function fetchSecurityItems(
 ): Promise<SecurityItemListResponse> {
   const search = new URLSearchParams();
 
-  if (params.status) search.set('status', params.status);
+  if (params.status) {
+    const statuses = Array.isArray(params.status)
+      ? params.status
+      : [params.status];
+    search.set('status', statuses.join(','));
+  }
   if (params.campusId) search.set('campusId', params.campusId);
   if (params.category) search.set('category', params.category);
+  if (params.q?.trim()) search.set('q', params.q.trim());
   if (params.cursor) search.set('cursor', params.cursor);
   if (params.limit) search.set('limit', String(params.limit));
 

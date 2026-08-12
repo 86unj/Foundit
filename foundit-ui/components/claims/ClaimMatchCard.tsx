@@ -76,6 +76,11 @@ export function ClaimMatchCard({
               Best Match
             </Badge>
           ) : null}
+          {item.status === 'expired' ? (
+            <Badge colorPalette="gray" variant="subtle" fontSize="xs">
+              Expired
+            </Badge>
+          ) : null}
         </Flex>
         <Flex align="center" gap={2}>
           <Text fontSize="xs" fontWeight="semibold" color="blue.600">

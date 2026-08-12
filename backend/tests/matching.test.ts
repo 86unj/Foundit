@@ -1,4 +1,5 @@
 import { describe, expect, test, vi, afterEach } from 'vitest';
+import { ItemStatus } from '@prisma/client';
 import {
   buildMatchCriteria,
   combineHybridScore,
@@ -125,6 +126,7 @@ describe('embedImage request shape', () => {
     vi.unstubAllGlobals();
     vi.resetModules();
     delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENROUTER_IMAGE_EMBEDDING_MODEL;
   });
 
   test('posts multimodal image_url content to OpenRouter', async () => {
@@ -177,5 +179,28 @@ describe('embedImage request shape', () => {
       embedImage('https://example.com/photo.jpg')
     ).resolves.toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('compareClaimableMatchCandidates', () => {
+  test('keeps stored items ahead of expired without changing scores', async () => {
+    const { compareClaimableMatchCandidates } =
+      await import('../src/lib/matching/matching');
+
+    const candidates = [
+      { status: ItemStatus.expired, score: 95 },
+      { status: ItemStatus.stored, score: 70 },
+      { status: ItemStatus.expired, score: 80 },
+      { status: ItemStatus.stored, score: 90 },
+    ];
+
+    const sorted = [...candidates].sort(compareClaimableMatchCandidates);
+
+    expect(sorted).toEqual([
+      { status: ItemStatus.stored, score: 90 },
+      { status: ItemStatus.stored, score: 70 },
+      { status: ItemStatus.expired, score: 95 },
+      { status: ItemStatus.expired, score: 80 },
+    ]);
   });
 });
