@@ -164,33 +164,39 @@ workflow's "Verify backend is live" step go green.
 
 ## Semantic matching: API key and embedding backfill
 
-Match suggestions rank almost entirely on semantic similarity (0.8 of the
-hybrid score). Two things must be true in production or the feature looks
-alive while returning nonsense:
+Match suggestions rank mainly on text semantic similarity, with optional image
+similarity when both the claim and stored item have photos. Two things must be
+true in production or the feature looks alive while returning nonsense:
 
 1. **`OPENROUTER_API_KEY` must be set** in `/opt/foundit/backend/.env`. When it
-   is absent the backend falls back to a meaningless local hash embedding. It
-   is no longer silent — the boot log carries a `warn` saying semantic matching
-   is degraded — so after restarting, confirm that warning is **not** present:
+   is absent the backend falls back to a meaningless local hash embedding for
+   **text** (image similarity is skipped). It is no longer silent — the boot
+   log carries a `warn` saying semantic matching is degraded — so after
+   restarting, confirm that warning is **not** present:
 
    ```bash
    pm2 logs foundit-backend --lines 50 | grep -i degraded
    ```
 
+   Optionally set `OPENROUTER_IMAGE_EMBEDDING_MODEL` (default
+   `nvidia/llama-nemotron-embed-vl-1b-v2`). Do not use a `:free` image model for
+   claim/item photos — free endpoints may log prompts.
+
 2. **Existing rows must be backfilled.** Items and claims created before the
-   embedding column existed have none. A match request computes missing ones
-   inline, but only up to `MATCH_INLINE_EMBEDDING_LIMIT` (default 25) per
-   request; anything past the cap is scored with the fallback vector, which
+   embedding column existed have none. A match request computes missing text
+   embeddings inline, but only up to `MATCH_INLINE_EMBEDDING_LIMIT` (default 25)
+   per request; anything past the cap is scored with the fallback vector, which
    scores ~0 against a real embedding and therefore **cannot clear the match
-   threshold at all** — those items silently never appear in suggestions. Prime
+   threshold at all** — those items silently never appear in suggestions. The
+   same script also fills `image_embedding` for rows that have photos. Prime
    them once:
 
    ```bash
    cd /opt/foundit/backend && pnpm backfill:embeddings
    ```
 
-   Idempotent (only touches rows with no embedding), batched with progress
-   output, and safe to interrupt and re-run.
+   Idempotent (only touches rows with no text/image embedding as needed),
+   batched with progress output, and safe to interrupt and re-run.
 
 ## Image uploads: R2 bucket CORS (manual, Cloudflare dashboard)
 

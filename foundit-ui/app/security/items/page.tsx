@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import {
   Box,
   Button,
@@ -66,6 +66,9 @@ function StoredItemsPageContent() {
   const [searchQuery, setSearchQuery] = useState(
     () => searchParams.get('q') ?? ''
   );
+  const [debouncedQuery, setDebouncedQuery] = useState(
+    () => searchParams.get('q')?.trim() ?? ''
+  );
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -74,6 +77,14 @@ function StoredItemsPageContent() {
   const [disposeDialogOpen, setDisposeDialogOpen] = useState(false);
   const [disposing, setDisposing] = useState(false);
   const [disposeError, setDisposeError] = useState('');
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -104,6 +115,7 @@ function StoredItemsPageContent() {
         const data = await fetchAllSecurityItems({
           campusId: campusFilter || undefined,
           status: (statusFilter as ItemStatus) || undefined,
+          q: debouncedQuery || undefined,
         });
 
         if (!active) return;
@@ -125,21 +137,9 @@ function StoredItemsPageContent() {
     return () => {
       active = false;
     };
-  }, [campusFilter, statusFilter]);
+  }, [campusFilter, statusFilter, debouncedQuery]);
 
-  const filteredItems = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return items;
-
-    return items.filter((item) => {
-      return (
-        item.title.toLowerCase().includes(query) ||
-        item.category.toLowerCase().includes(query) ||
-        item.itemId.toLowerCase().includes(query) ||
-        item.campusName.toLowerCase().includes(query)
-      );
-    });
-  }, [items, searchQuery]);
+  const filteredItems = items;
 
   const totalPages = Math.max(
     1,
@@ -353,7 +353,7 @@ function StoredItemsPageContent() {
               setSearchQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Search items"
+            placeholder="Search title, brand, color, location..."
             h={10}
             pr={10}
             bg="white"

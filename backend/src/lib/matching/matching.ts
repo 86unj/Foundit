@@ -20,10 +20,33 @@ import {
 const MIN_MATCH_SCORE = 55;
 const MAX_SUGGESTIONS = 10;
 
+/** Items still physically retained and eligible for matching / linking. */
+export const CLAIMABLE_ITEM_STATUSES = [
+  ItemStatus.stored,
+  ItemStatus.expired,
+] as const;
+
 export interface GeneratedMatchCandidate {
   itemId: string;
   score: number;
   criteria: string;
+}
+
+interface ScoredMatchCandidate extends GeneratedMatchCandidate {
+  status: ItemStatus;
+}
+
+/** Stored items first (by score), then expired (by score). */
+export function compareClaimableMatchCandidates(
+  left: Pick<ScoredMatchCandidate, 'status' | 'score'>,
+  right: Pick<ScoredMatchCandidate, 'status' | 'score'>
+): number {
+  const leftExpired = left.status === ItemStatus.expired ? 1 : 0;
+  const rightExpired = right.status === ItemStatus.expired ? 1 : 0;
+  if (leftExpired !== rightExpired) {
+    return leftExpired - rightExpired;
+  }
+  return right.score - left.score;
 }
 
 function getTodayUtcDate(): Date {
@@ -47,16 +70,26 @@ function parseEmbedding(value: Prisma.JsonValue | null): number[] | null {
 interface MatchItemRow extends ItemSearchInput {
   itemId: string;
   embedding: Prisma.JsonValue | null;
+  imageEmbedding: Prisma.JsonValue | null;
+}
+
+interface ResolvedItemVectors {
+  textEmbeddings: Map<string, number[]>;
+  imageEmbeddings: Map<string, number[]>;
 }
 
 /**
- * Resolves an embedding for every candidate item.
+ * Resolves text (and any already-stored image) embeddings for every candidate.
  *
- * Rows that already have one cost nothing. Rows that do not are embedded and
- * the result is written back through the ingest helper, so a second run of the
- * same request finds them indexed instead of paying for the API call again.
- * That work is capped per request; whatever exceeds the cap is still scored,
- * using the offline hash embedding, and the shortfall is logged.
+ * Rows that already have a text embedding cost nothing. Rows that do not are
+ * embedded and the result is written back through the ingest helper, so a
+ * second run of the same request finds them indexed instead of paying for the
+ * API call again. That work is capped per request; whatever exceeds the cap is
+ * still scored, using the offline hash embedding, and the shortfall is logged.
+ *
+ * Image embeddings are never computed inline here beyond what ingest already
+ * wrote — missing image vectors simply drop the match into the text-only
+ * hybrid weights.
  *
  * Writing here is safe: generateMatchCandidates() runs before — never inside —
  * the transaction in suggestions.ts, and this path already persisted the
@@ -64,21 +97,27 @@ interface MatchItemRow extends ItemSearchInput {
  */
 async function resolveItemEmbeddings(
   items: readonly MatchItemRow[]
-): Promise<Map<string, number[]>> {
-  const resolved = new Map<string, number[]>();
+): Promise<ResolvedItemVectors> {
+  const textEmbeddings = new Map<string, number[]>();
+  const imageEmbeddings = new Map<string, number[]>();
   const pending: MatchItemRow[] = [];
 
   for (const item of items) {
+    const imageEmbedding = parseEmbedding(item.imageEmbedding);
+    if (imageEmbedding) {
+      imageEmbeddings.set(item.itemId, imageEmbedding);
+    }
+
     const embedding = parseEmbedding(item.embedding);
     if (embedding) {
-      resolved.set(item.itemId, embedding);
+      textEmbeddings.set(item.itemId, embedding);
     } else {
       pending.push(item);
     }
   }
 
   if (pending.length === 0) {
-    return resolved;
+    return { textEmbeddings, imageEmbeddings };
   }
 
   if (isSemanticMatchingDegraded()) {
@@ -86,9 +125,12 @@ async function resolveItemEmbeddings(
     // bound. Deliberately not persisted — storing hash vectors would make the
     // rows look indexed and stop the backfill fixing them once a key is set.
     for (const item of pending) {
-      resolved.set(item.itemId, buildLocalEmbedding(buildItemSearchText(item)));
+      textEmbeddings.set(
+        item.itemId,
+        buildLocalEmbedding(buildItemSearchText(item))
+      );
     }
-    return resolved;
+    return { textEmbeddings, imageEmbeddings };
   }
 
   const { maxInline, concurrency } = resolveInlineEmbeddingLimits();
@@ -112,11 +154,25 @@ async function resolveItemEmbeddings(
     );
 
     compute.forEach((item, index) => {
-      resolved.set(
+      textEmbeddings.set(
         item.itemId,
         computed[index] ?? buildLocalEmbedding(buildItemSearchText(item))
       );
     });
+
+    // Ingest also writes imageEmbedding when a photo exists; reload those.
+    const refreshed = await prisma.item.findMany({
+      where: {
+        itemId: { in: compute.map((item) => item.itemId) },
+      },
+      select: { itemId: true, imageEmbedding: true },
+    });
+    for (const row of refreshed) {
+      const imageEmbedding = parseEmbedding(row.imageEmbedding);
+      if (imageEmbedding) {
+        imageEmbeddings.set(row.itemId, imageEmbedding);
+      }
+    }
   }
 
   if (skipped.length > 0) {
@@ -134,11 +190,14 @@ async function resolveItemEmbeddings(
     );
 
     for (const item of skipped) {
-      resolved.set(item.itemId, buildLocalEmbedding(buildItemSearchText(item)));
+      textEmbeddings.set(
+        item.itemId,
+        buildLocalEmbedding(buildItemSearchText(item))
+      );
     }
   }
 
-  return resolved;
+  return { textEmbeddings, imageEmbeddings };
 }
 
 export async function generateMatchCandidates(claimId: string): Promise<{
@@ -151,6 +210,7 @@ export async function generateMatchCandidates(claimId: string): Promise<{
       claimId: true,
       dateLost: true,
       embedding: true,
+      imageEmbedding: true,
     },
   });
 
@@ -159,8 +219,15 @@ export async function generateMatchCandidates(claimId: string): Promise<{
   }
 
   let claimEmbedding = parseEmbedding(claim.embedding);
+  let claimImageEmbedding = parseEmbedding(claim.imageEmbedding);
   if (!claimEmbedding) {
     claimEmbedding = await ingestClaimSearchIndex(claimId);
+    // Re-read image embedding after ingest so a just-computed vector is used.
+    const refreshed = await prisma.claim.findUnique({
+      where: { claimId },
+      select: { imageEmbedding: true },
+    });
+    claimImageEmbedding = parseEmbedding(refreshed?.imageEmbedding ?? null);
   }
 
   if (!claimEmbedding) {
@@ -170,17 +237,14 @@ export async function generateMatchCandidates(claimId: string): Promise<{
   const today = getTodayUtcDate();
   const items = await prisma.item.findMany({
     where: {
-      status: ItemStatus.stored,
-      OR: [
-        { retentionExpiryDate: null },
-        { retentionExpiryDate: { gt: today } },
-      ],
+      status: { in: [...CLAIMABLE_ITEM_STATUSES] },
       claims: {
         none: { status: ClaimStatus.approved },
       },
     },
     select: {
       itemId: true,
+      status: true,
       category: true,
       dateFound: true,
       locationFound: true,
@@ -191,14 +255,16 @@ export async function generateMatchCandidates(claimId: string): Promise<{
       brand: true,
       color: true,
       embedding: true,
+      imageEmbedding: true,
     },
   });
 
-  const itemEmbeddings = await resolveItemEmbeddings(items);
-  const scored: GeneratedMatchCandidate[] = [];
+  const { textEmbeddings, imageEmbeddings } =
+    await resolveItemEmbeddings(items);
+  const scored: ScoredMatchCandidate[] = [];
 
   for (const item of items) {
-    const itemEmbedding = itemEmbeddings.get(item.itemId);
+    const itemEmbedding = textEmbeddings.get(item.itemId);
     if (!itemEmbedding) {
       continue;
     }
@@ -209,10 +275,17 @@ export async function generateMatchCandidates(claimId: string): Promise<{
       continue;
     }
 
+    const itemImageEmbedding = imageEmbeddings.get(item.itemId) ?? null;
+    const imageSimilarity =
+      claimImageEmbedding && itemImageEmbedding
+        ? cosineSimilarity(claimImageEmbedding, itemImageEmbedding)
+        : null;
+
     const hybridInput = {
       semanticSimilarity,
       dateProximity: date.score,
       retention: retentionUrgencyScore(item.retentionExpiryDate, today),
+      imageSimilarity,
     };
 
     const score = combineHybridScore(hybridInput);
@@ -220,17 +293,31 @@ export async function generateMatchCandidates(claimId: string): Promise<{
       continue;
     }
 
+    const criteria = buildMatchCriteria(hybridInput);
     scored.push({
       itemId: item.itemId,
       score,
-      criteria: buildMatchCriteria(hybridInput),
+      criteria:
+        item.status === ItemStatus.expired
+          ? criteria
+            ? `${criteria},expired`
+            : 'expired'
+          : criteria,
+      status: item.status,
     });
   }
 
-  scored.sort((left, right) => right.score - left.score);
+  // Stored first (by score), then expired at the bottom (by score).
+  scored.sort(compareClaimableMatchCandidates);
 
   return {
-    candidates: scored.slice(0, MAX_SUGGESTIONS),
+    candidates: scored
+      .slice(0, MAX_SUGGESTIONS)
+      .map(({ itemId, score, criteria }) => ({
+        itemId,
+        score,
+        criteria,
+      })),
     candidateCount: items.length,
   };
 }

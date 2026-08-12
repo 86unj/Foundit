@@ -218,6 +218,7 @@ model Item {
   retentionExpiryDate DateTime?  @map("retention_expiry_date") @db.Date
   searchText          String?    @map("search_text") @db.Text
   embedding           Json?      @map("embedding")
+  imageEmbedding      Json?      @map("image_embedding")
   createdAt           DateTime   @default(now()) @map("created_at")
   updatedAt           DateTime   @default(now()) @updatedAt @map("updated_at")
 
@@ -256,6 +257,7 @@ model Claim {
   verifiedBy             String?                     @map("verified_by") @db.Uuid
   searchText             String?                     @map("search_text") @db.Text
   embedding              Json?                       @map("embedding")
+  imageEmbedding         Json?                       @map("image_embedding")
   createdAt              DateTime                    @default(now()) @map("created_at")
   updatedAt              DateTime                    @default(now()) @updatedAt @map("updated_at")
 

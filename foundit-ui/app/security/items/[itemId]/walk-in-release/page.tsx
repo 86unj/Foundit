@@ -254,7 +254,8 @@ export default function WalkInReleasePage() {
     setSubmitError('');
   }
 
-  const itemCanRelease = item?.status === 'stored';
+  const itemCanRelease =
+    item?.status === 'stored' || item?.status === 'expired';
   const verificationComplete = isVerificationComplete(verification);
   const formComplete =
     !!form.studentFullName.trim() && !!form.idVerified.trim();

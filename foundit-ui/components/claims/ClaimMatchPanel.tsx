@@ -62,6 +62,9 @@ export function ClaimMatchPanel({
   const showFooter = showMatchActions || Boolean(onCloseClaim);
   const visibleSuggestions = suggestions.slice(0, aiVisibleCount);
   const hasMoreAiMatches = suggestions.length > aiVisibleCount;
+  const bestStoredMatchId =
+    suggestions.find((match) => match.item.status !== 'expired')?.matchId ??
+    null;
 
   function handleSelectItem(itemId: string) {
     onSelectItem(selectedItemId === itemId ? null : itemId);
@@ -104,7 +107,7 @@ export function ClaimMatchPanel({
                 key={match.matchId}
                 match={match}
                 rank={index + 1}
-                isBestMatch={index === 0}
+                isBestMatch={match.matchId === bestStoredMatchId}
                 selected={selectedItemId === match.itemId}
                 onSelect={() => handleSelectItem(match.itemId)}
               />

@@ -26,12 +26,42 @@ export const expiredItemCountQuerySchema = publicItemsQuerySchema.pick({
 });
 
 export const listSecurityItemsQuerySchema = z.object({
-  status: z.enum(itemStatusValues).optional(),
+  status: z.preprocess(
+    (value) => {
+      if (value === undefined || value === null || value === '') {
+        return undefined;
+      }
+      if (Array.isArray(value)) {
+        return value;
+      }
+      if (typeof value === 'string') {
+        const parts = value
+          .split(',')
+          .map((part) => part.trim())
+          .filter(Boolean);
+        if (parts.length === 0) return undefined;
+        if (parts.length === 1) return parts[0];
+        return parts;
+      }
+      return value;
+    },
+    z
+      .union([
+        z.enum(itemStatusValues),
+        z.array(z.enum(itemStatusValues)).min(1),
+      ])
+      .optional()
+  ),
   campusId: z.uuid().optional(),
   category: z.string().min(1).max(50).trim().optional(),
+  q: z.string().trim().max(200).optional(),
   cursor: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(50).default(20),
 });
+
+export type ListSecurityItemsQuery = z.infer<
+  typeof listSecurityItemsQuerySchema
+>;
 
 export const itemParamsSchema = z.object({
   itemId: z.uuid(),

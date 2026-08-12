@@ -93,12 +93,17 @@ JWT_REFRESH_SECRET=another-different-random-string
 
 ### Semantic matching
 
-| Variable                     | Description                                                |
-| ---------------------------- | ---------------------------------------------------------- |
-| `OPENROUTER_API_KEY`         | OpenRouter API key for embedding-based match search        |
-| `OPENROUTER_EMBEDDING_MODEL` | Embedding model (default: `openai/text-embedding-3-small`) |
+| Variable                           | Description                                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`               | OpenRouter API key for embedding-based match search                                |
+| `OPENROUTER_EMBEDDING_MODEL`       | Text embedding model (default: `openai/text-embedding-3-small`)                    |
+| `OPENROUTER_IMAGE_EMBEDDING_MODEL` | Multimodal image embedding model (default: `nvidia/llama-nemotron-embed-vl-1b-v2`) |
 
-If unset, a local hash fallback is used (dev only). After deploy, backfill existing rows:
+If unset, a local hash fallback is used for **text** embeddings (dev only). Image embeddings have no hash fallback — when the key is missing or the image call fails, matching stays on the text-only hybrid weights.
+
+Do **not** use a `:free` image embedding model for claim/item photos: free OpenRouter endpoints may log prompts. Prefer the non-free multimodal model above.
+
+After deploy, backfill existing rows (text + image vectors for rows with photos):
 
 ```bash
 pnpm run backfill:embeddings
@@ -211,7 +216,7 @@ Global API rules:
 | POST   | `/api/claims/:claimId/match-suggestions`          | security/admin         | Done   | Run semantic match scoring and upsert suggestions        |
 | PATCH  | `/api/claims/:claimId/match-suggestions/:matchId` | security/admin         | Done   | Confirm or dismiss a match suggestion                    |
 
-Match suggestions use precomputed `searchText` / `embedding` on claims and stored items (built on create/update). `POST` compares embeddings with hybrid re-ranking (category, date, campus, location). Security still confirms matches manually.
+Match suggestions use precomputed `searchText` / `embedding` / `imageEmbedding` on claims and stored items (built on create/update). `POST` compares text embeddings with hybrid re-ranking (date, retention) and, when both sides have photos, blends in image similarity. Security still confirms matches manually.
 
 Claim cancellation uses `DELETE /api/claims/:claimId` because the original database `claim_status` enum does not include `withdrawn`.
 
