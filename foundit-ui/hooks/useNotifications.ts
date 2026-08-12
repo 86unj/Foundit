@@ -21,6 +21,11 @@ const PAGE_SIZE = 10;
  * server state on failure (by refetching). When a NotificationsProvider is
  * mounted, unread-count changes are mirrored into it so the navbar bell
  * updates live.
+ *
+ * When `unreadOnly` is true, marking a card read (or Mark all) does **not**
+ * remove it from the local list — read rows stay rendered until the filter
+ * changes, the feed remounts, or `reload()` runs. Server `unreadOnly` only
+ * applies on those refetches.
  */
 export function useNotifications(options?: { unreadOnly?: boolean }) {
   const unreadOnly = options?.unreadOnly ?? false;

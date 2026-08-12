@@ -141,6 +141,26 @@ describe('useNotifications', () => {
     expect(markNotificationReadMock).toHaveBeenCalledWith('n-1');
   });
 
+  it('keeps read rows in the list when unreadOnly is true', async () => {
+    fetchNotificationsMock.mockResolvedValue({
+      notifications: [unread],
+      unreadCount: 1,
+      nextCursor: null,
+    });
+    markNotificationReadMock.mockResolvedValue({ ...unread, isRead: true });
+
+    const { result } = renderHook(() => useNotifications({ unreadOnly: true }));
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    await act(() => result.current.markRead('n-1'));
+
+    expect(result.current.notifications).toHaveLength(1);
+    expect(result.current.notifications[0]?.isRead).toBe(true);
+    expect(result.current.unreadCount).toBe(0);
+    // No client-side filter-out — only the initial unreadOnly fetch.
+    expect(fetchNotificationsMock).toHaveBeenCalledTimes(1);
+  });
+
   it('skips the request for an already-read notification', async () => {
     const { result } = renderHook(() => useNotifications());
     await waitFor(() => expect(result.current.isLoading).toBe(false));

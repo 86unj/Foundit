@@ -102,13 +102,7 @@ public one exists), `claims[]` (claimId / status / studentName), `campusId`,
 - Cancel navigates back to `/security/items`.
 - Responsive layout (fields beside photo on `lg`, stacked on mobile).
 
-**Working (since earlier stub notes)**
-
-- **Edit mode** — Save persists via `PATCH /api/items/:itemId`.
-- **Release** — walks to `/security/items/<id>/walk-in-release` (`POST .../walk-in-release`).
-- **Dispose** — `PATCH /api/items/:itemId/status` with `disposed` when allowed.
-
-**Still stubbed / unused in UI**
+**Stubbed / unused in UI**
 
 - **Finder** / **Finder Contact** — not shown (API may return `finder`; page does not render it).
 

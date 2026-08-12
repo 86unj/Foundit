@@ -57,30 +57,33 @@ describe('NotificationCard', () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it('circle toggle fires onToggleRead without firing the card onClick', () => {
+  it('marks unread via the mail icon without firing card onClick', () => {
     const onClick = vi.fn();
-    const onToggleRead = vi.fn();
+    const onMarkUnread = vi.fn();
     renderWithProvider(
       <NotificationCard
         {...baseProps}
         isRead
         onClick={onClick}
-        onToggleRead={onToggleRead}
+        onMarkUnread={onMarkUnread}
       />
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark as unread' }));
 
-    expect(onToggleRead).toHaveBeenCalledTimes(1);
+    expect(onMarkUnread).toHaveBeenCalledTimes(1);
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it('labels the toggle "Mark as read" when the card is unread', () => {
+  it('marks read via the mail-open icon when unread', () => {
+    const onMarkRead = vi.fn();
     renderWithProvider(
-      <NotificationCard {...baseProps} isRead={false} onToggleRead={vi.fn()} />
+      <NotificationCard {...baseProps} isRead={false} onMarkRead={onMarkRead} />
     );
 
-    expect(screen.getByRole('button', { name: 'Mark as read' })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark as read' }));
+
+    expect(onMarkRead).toHaveBeenCalledTimes(1);
   });
 
   it('dismiss fires onDismiss without firing the card onClick', () => {
