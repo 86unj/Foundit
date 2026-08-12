@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   Box,
@@ -30,6 +30,14 @@ const Select = chakra('select');
 const CLAIMS_PER_PAGE = 10;
 
 export default function StudentMyClaimsPage() {
+  return (
+    <Suspense fallback={null}>
+      <StudentMyClaimsContent />
+    </Suspense>
+  );
+}
+
+function StudentMyClaimsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const claimIdFromQuery = searchParams.get('claimId');
