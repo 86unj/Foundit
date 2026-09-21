@@ -135,7 +135,7 @@ jobs:
     name: Deploy to Lightsail
     runs-on: ubuntu-latest
     needs: [backend, frontend, format]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false
 
     # One deploy at a time: two runs pulling and building in the same
     # checkout would fight over it. Queue instead of cancelling — an

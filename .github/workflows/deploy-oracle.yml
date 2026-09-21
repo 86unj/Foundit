@@ -1,0 +1,110 @@
+name: Deploy backend to Oracle
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-oracle
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          base: ${{ github.event.workflow_run.head_sha }}~1
+          ref: ${{ github.event.workflow_run.head_sha }}
+          filters: |
+            backend:
+              - 'backend/**'
+              - '.github/workflows/deploy-oracle.yml'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: backend/pnpm-lock.yaml
+
+      - name: Install & build
+        if: steps.changes.outputs.backend == 'true'
+        run: |
+          pnpm install --frozen-lockfile --config.node-linker=hoisted
+          pnpm exec prisma generate
+          pnpm build
+
+      - name: Migrate Neon
+        if: steps.changes.outputs.backend == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: pnpm exec prisma migrate deploy
+
+      - name: Pack production artifact
+        if: steps.changes.outputs.backend == 'true'
+        run: |
+          pnpm prune --prod
+          tar -czf foundit-api.tar.gz \
+            dist \
+            prisma \
+            package.json \
+            node_modules
+
+      - name: Upload to VM
+        uses: appleboy/scp-action@v0.1.7
+        if: steps.changes.outputs.backend == 'true'
+        with:
+          host: ${{ vars.ORACLE_SSH_HOST }}
+          username: ${{ vars.ORACLE_SSH_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          source: backend/foundit-api.tar.gz
+          target: /tmp/
+          strip_components: 1
+
+      - name: Unpack & restart
+        uses: appleboy/ssh-action@v1
+        if: steps.changes.outputs.backend == 'true'
+        with:
+          host: ${{ vars.ORACLE_SSH_HOST }}
+          username: ${{ vars.ORACLE_SSH_USER }}
+          key: ${{ secrets.ORACLE_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            cd /opt/foundit-api
+            rm -rf dist node_modules
+            tar -xzf /tmp/foundit-api.tar.gz
+            rm /tmp/foundit-api.tar.gz
+            if pm2 describe foundit-backend >/dev/null 2>&1; then
+              pm2 restart foundit-backend
+            else
+              pm2 start dist/index.js --name foundit-backend
+              pm2 save
+            fi
+
+      - name: Health check
+        if: steps.changes.outputs.backend == 'true'
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 10 "${{ vars.API_HEALTH_URL }}"; then
+              exit 0
+            fi
+            sleep 10
+          done
+          exit 1
