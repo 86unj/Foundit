@@ -3,18 +3,12 @@ import { randomUUID } from 'node:crypto';
 import {
   ClaimStatus,
   ItemStatus,
-  MatchStatus,
   NotificationType,
   Prisma,
 } from '@prisma/client';
 import { prisma } from '../db';
-import { writeAuditLog, writeAuditLogs } from '../utils/auditLog';
-import {
-  createClaimStatusUpdateInput,
-  fanOutToCampusSecurity,
-} from '../lib/notifications';
-
-const AUTO_EXPIRE_REJECTION_REASON = 'Item retention period ended.';
+import { writeAuditLogs } from '../utils/auditLog';
+import { fanOutToCampusSecurity } from '../lib/notifications';
 
 function getTodayUtcDate(): Date {
   const today = new Date();
@@ -101,91 +95,8 @@ export async function expireDueItems(): Promise<number> {
       return 0;
     }
 
-    const expiredItemIds = expiredItems.map((item) => item.itemId);
-
-    // Snapshot claims only after confirming that their item was expired.
-    const affectedClaims = await tx.claim.findMany({
-      where: {
-        itemId: { in: expiredItemIds },
-        status: {
-          in: [ClaimStatus.submitted, ClaimStatus.under_review],
-        },
-      },
-      select: {
-        claimId: true,
-        studentId: true,
-        itemName: true,
-        status: true,
-        itemId: true,
-      },
-    });
-
-    await tx.claim.updateMany({
-      where: {
-        itemId: { in: expiredItemIds },
-        status: {
-          in: [ClaimStatus.submitted, ClaimStatus.under_review],
-        },
-      },
-      data: {
-        status: ClaimStatus.rejected,
-        rejectionReason: AUTO_EXPIRE_REJECTION_REASON,
-        reviewedAt: new Date(),
-        reviewedBy: null,
-      },
-    });
-
-    await tx.matchSuggestion.updateMany({
-      where: {
-        itemId: { in: expiredItemIds },
-        status: MatchStatus.suggested,
-      },
-      data: { status: MatchStatus.dismissed },
-    });
-
-    // Notify students whose claims were auto-rejected.
-    if (affectedClaims.length > 0) {
-      await tx.notification.createMany({
-        data: affectedClaims.map((claim) =>
-          createClaimStatusUpdateInput(claim, 'rejected')
-        ),
-      });
-      await writeAuditLog(
-        {
-          actorType: 'system',
-          action: 'notification_fanout_created',
-          entityType: 'notification',
-          entityId: null,
-          outcome: 'success',
-          runId,
-          details: {
-            recipientCount: affectedClaims.length,
-            sourceEntityType: 'claim',
-            notificationType: NotificationType.claim_status_update,
-          },
-        },
-        tx
-      );
-    }
-
-    await writeAuditLogs(
-      affectedClaims.map((claim) => ({
-        actorType: 'system',
-        action: 'claim_status_updated',
-        entityType: 'claim',
-        entityId: claim.claimId,
-        outcome: 'success',
-        reasonCode: 'item_retention_expired',
-        runId,
-        entityLabel: claim.itemName ?? undefined,
-        details: {
-          previousStatus: claim.status,
-          nextStatus: ClaimStatus.rejected,
-          itemId: claim.itemId,
-        },
-      })),
-      tx
-    );
+    // Expired items remain physically retained and claimable until disposed.
+    // Do not dismiss match suggestions or auto-reject open claims here.
 
     // Notify security at each affected campus, batched per campus.
     const expiredCountByCampus = new Map<string, number>();

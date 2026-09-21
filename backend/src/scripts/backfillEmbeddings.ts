@@ -1,10 +1,14 @@
 /**
- * One-off backfill for rows created before semantic matching existed.
+ * One-off backfill for rows created before semantic matching existed (or before
+ * image similarity was added).
  *
  * Items and claims whose `embedding` column is still NULL force the match
  * endpoint to compute embeddings inline, which is slow and capped. Running
  * this primes them up front so the first "generate match suggestions" click in
  * production is fast.
+ *
+ * A second pass fills `image_embedding` for rows that already have a photo but
+ * no image vector (image similarity is skipped until then).
  *
  * Usage (from backend/):
  *   pnpm backfill:embeddings
@@ -12,8 +16,8 @@
  *   pnpm backfill:embeddings -- --allow-hash-fallback   # local dev only
  *
  * Properties:
- *   - Idempotent: only rows with no embedding are selected, so re-running
- *     after a full pass does nothing.
+ *   - Idempotent: only rows with no embedding / no image embedding are
+ *     selected, so re-running after a full pass does nothing.
  *   - Interrupt-safe: every row is written in its own statement and the
  *     keyset cursor is recomputed from the database on each batch, so Ctrl-C
  *     leaves no partial state. Re-run to continue where it stopped.
@@ -74,8 +78,8 @@ function requestStop(signal: string): void {
 }
 
 interface BackfillTarget {
-  label: 'item' | 'claim';
-  /** Rows with no embedding whose id sorts after `afterId`, ordered by id. */
+  label: string;
+  /** Rows whose id sorts after `afterId`, ordered by id. */
   fetchBatch(afterId: string | null, take: number): Promise<string[]>;
   ingest(id: string): Promise<unknown>;
 }
@@ -167,8 +171,12 @@ async function main(): Promise<void> {
   // Imported lazily: constructing the Prisma client requires DATABASE_URL, and
   // the checks above must be able to fail cleanly before that happens.
   const { prisma } = await import('../db');
-  const { ingestClaimSearchIndex, ingestItemSearchIndex } =
-    await import('../lib/matching/ingest');
+  const {
+    ingestClaimSearchIndex,
+    ingestItemSearchIndex,
+    ingestClaimImageEmbedding,
+    ingestItemImageEmbedding,
+  } = await import('../lib/matching/ingest');
 
   const { concurrency } = resolveInlineEmbeddingLimits();
   logger.info(
@@ -178,7 +186,7 @@ async function main(): Promise<void> {
 
   const targets: BackfillTarget[] = [
     {
-      label: 'item',
+      label: 'item-text',
       async fetchBatch(afterId, take) {
         const rows = await prisma.item.findMany({
           where: {
@@ -194,7 +202,7 @@ async function main(): Promise<void> {
       ingest: (id) => ingestItemSearchIndex(id),
     },
     {
-      label: 'claim',
+      label: 'claim-text',
       async fetchBatch(afterId, take) {
         const rows = await prisma.claim.findMany({
           where: {
@@ -211,6 +219,50 @@ async function main(): Promise<void> {
     },
   ];
 
+  // Image embeddings have no local hash fallback. Without an API key the
+  // vectors stay null and would keep matching the filter forever.
+  if (!isSemanticMatchingDegraded()) {
+    targets.push(
+      {
+        label: 'item-image',
+        async fetchBatch(afterId, take) {
+          const rows = await prisma.item.findMany({
+            where: {
+              imageEmbedding: { equals: Prisma.AnyNull },
+              images: { some: {} },
+              ...(afterId ? { itemId: { gt: afterId } } : {}),
+            },
+            orderBy: { itemId: 'asc' },
+            take,
+            select: { itemId: true },
+          });
+          return rows.map((row) => row.itemId);
+        },
+        ingest: (id) => ingestItemImageEmbedding(id),
+      },
+      {
+        label: 'claim-image',
+        async fetchBatch(afterId, take) {
+          const rows = await prisma.claim.findMany({
+            where: {
+              imageEmbedding: { equals: Prisma.AnyNull },
+              images: { some: {} },
+              ...(afterId ? { claimId: { gt: afterId } } : {}),
+            },
+            orderBy: { claimId: 'asc' },
+            take,
+            select: { claimId: true },
+          });
+          return rows.map((row) => row.claimId);
+        },
+        ingest: (id) => ingestClaimImageEmbedding(id),
+      }
+    );
+  } else {
+    logger.warn(
+      'Skipping image-embedding backfill because OPENROUTER_API_KEY is not set.'
+    );
+  }
   try {
     for (const target of targets) {
       const result = await backfillEntity(

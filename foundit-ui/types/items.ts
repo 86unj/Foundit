@@ -79,6 +79,11 @@ export interface SecurityItemDetail extends SecurityItemListItem {
     firstName: string;
     lastName: string;
   };
+  releasedBy: {
+    userId: string;
+    firstName: string;
+    lastName: string;
+  } | null;
   finder: SecurityItemFinder | null;
   claims: SecurityItemClaimSummary[];
 }

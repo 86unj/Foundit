@@ -481,31 +481,28 @@ function createMatchFoundNotificationInput(claim: {
 async function reserveItemForClaim(
   tx: Prisma.TransactionClient,
   itemId: string
-) {
-  const updateResult = await tx.item.updateMany({
-    where: {
-      itemId,
-      status: ItemStatus.stored,
-    },
-    data: { status: ItemStatus.claimed },
-  });
-
-  if (updateResult.count > 0) {
-    return;
-  }
-
+): Promise<ItemStatus> {
   const item = await tx.item.findUnique({
     where: { itemId },
-    select: { itemId: true },
+    select: { itemId: true, status: true },
   });
 
   if (!item) {
     throw new Error('LINKED_ITEM_NOT_FOUND');
   }
 
-  const conflictError = new Error('LINKED_ITEM_NOT_STORED');
-  conflictError.name = 'LINKED_ITEM_NOT_STORED';
-  throw conflictError;
+  if (item.status !== ItemStatus.stored && item.status !== ItemStatus.expired) {
+    const conflictError = new Error('LINKED_ITEM_NOT_STORED');
+    conflictError.name = 'LINKED_ITEM_NOT_STORED';
+    throw conflictError;
+  }
+
+  await tx.item.update({
+    where: { itemId },
+    data: { status: ItemStatus.claimed },
+  });
+
+  return item.status;
 }
 
 async function applyMatchConfirmation(
@@ -522,7 +519,7 @@ async function applyMatchConfirmation(
   context: { requestId: string; ipAddress?: string },
   itemLabel?: string
 ) {
-  await reserveItemForClaim(tx, itemId);
+  const previousItemStatus = await reserveItemForClaim(tx, itemId);
 
   const now = new Date();
   const updatedClaim = await tx.claim.update({
@@ -590,7 +587,7 @@ async function applyMatchConfirmation(
         entityLabel: itemLabel,
         outcome: 'success',
         details: {
-          previousStatus: ItemStatus.stored,
+          previousStatus: previousItemStatus,
           nextStatus: ItemStatus.claimed,
           claimId: claim.claimId,
         },
@@ -1252,7 +1249,10 @@ router.patch(
         return;
       }
 
-      if (item.status !== ItemStatus.stored) {
+      if (
+        item.status !== ItemStatus.stored &&
+        item.status !== ItemStatus.expired
+      ) {
         const context = auditContextFromRequest(req);
         await writeAuditLogBestEffort({
           actorId: actor.userId,
@@ -1263,13 +1263,14 @@ router.patch(
           entityId: claim.claimId,
           entityLabel: `${item.title} (${item.category})`,
           outcome: 'denied',
-          reasonCode: 'item_not_stored',
+          reasonCode: 'item_not_claimable',
           details: { itemId: item.itemId, itemStatus: item.status },
           ...context,
         });
         res.status(409).json({
           code: 'ITEM_NOT_STORED',
-          message: 'Only stored items can be linked to a claim.',
+          message:
+            'Only stored or expired items still in retention can be linked to a claim.',
         });
         return;
       }
@@ -1466,7 +1467,10 @@ router.patch(
               throw new Error('LINKED_ITEM_NOT_FOUND');
             }
 
-            if (item.status === ItemStatus.stored) {
+            if (
+              item.status === ItemStatus.stored ||
+              item.status === ItemStatus.expired
+            ) {
               await tx.item.update({
                 where: { itemId: item.itemId },
                 data: { status: ItemStatus.claimed },
@@ -1587,7 +1591,8 @@ router.patch(
       if (err instanceof Error && err.name === 'LINKED_ITEM_NOT_STORED') {
         res.status(409).json({
           code: 'LINKED_ITEM_NOT_STORED',
-          message: 'The linked item must still be stored before approval.',
+          message:
+            'The linked item must still be stored or expired (in retention) before approval.',
         });
         return;
       }
@@ -1869,7 +1874,10 @@ router.patch(
               throw new Error('MATCH_ITEM_NOT_FOUND');
             }
 
-            if (item.status !== ItemStatus.stored) {
+            if (
+              item.status !== ItemStatus.stored &&
+              item.status !== ItemStatus.expired
+            ) {
               const conflictError = new Error('MATCH_ITEM_NOT_STORED');
               conflictError.name = 'MATCH_ITEM_NOT_STORED';
               throw conflictError;
@@ -1955,7 +1963,8 @@ router.patch(
       if (err instanceof Error && err.name === 'MATCH_ITEM_NOT_STORED') {
         res.status(409).json({
           code: 'MATCH_ITEM_NOT_STORED',
-          message: 'Only stored items can be confirmed as a match.',
+          message:
+            'Only stored or expired items still in retention can be confirmed as a match.',
         });
         return;
       }

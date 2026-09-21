@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Badge,
   Box,
   Flex,
   Grid,
@@ -18,14 +19,36 @@ import NextLink from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { fetchCategoryStats, fetchSecurityItems } from '@/lib/api/items';
 import type { SecurityClaimListItem } from '@/types/claims';
-import type { CategoryStat, SecurityItemListItem } from '@/types/items';
+import type {
+  CategoryStat,
+  ItemStatus,
+  SecurityItemListItem,
+} from '@/types/items';
+import { ITEM_STATUS_LABELS } from '@/types/items';
 import { formatClaimDate } from '@/utils/claimDisplay';
 
 const Select = chakra('select');
 const RadioInput = chakra('input');
 
+const CLAIMABLE_STATUSES: ItemStatus[] = ['stored', 'expired'];
+
 function formatItemId(itemId: string): string {
   return itemId.slice(0, 8).toUpperCase();
+}
+
+function sortClaimableItems(
+  items: SecurityItemListItem[]
+): SecurityItemListItem[] {
+  return [...items].sort((left, right) => {
+    const leftExpired = left.status === 'expired' ? 1 : 0;
+    const rightExpired = right.status === 'expired' ? 1 : 0;
+    if (leftExpired !== rightExpired) {
+      return leftExpired - rightExpired;
+    }
+    return (
+      new Date(right.dateFound).getTime() - new Date(left.dateFound).getTime()
+    );
+  });
 }
 
 interface ClaimManualSearchListProps {
@@ -92,14 +115,26 @@ function ManualSearchRow({ item, selected, onSelect }: ManualSearchRowProps) {
           )}
         </Flex>
         <Stack gap={0} minW={0}>
-          <Text
-            fontSize="sm"
-            fontWeight="semibold"
-            color="gray.900"
-            lineClamp={1}
-          >
-            {item.title}
-          </Text>
+          <Flex align="center" gap={2} minW={0}>
+            <Text
+              fontSize="sm"
+              fontWeight="semibold"
+              color="gray.900"
+              lineClamp={1}
+            >
+              {item.title}
+            </Text>
+            {item.status === 'expired' ? (
+              <Badge
+                colorPalette="gray"
+                variant="subtle"
+                fontSize="2xs"
+                flexShrink={0}
+              >
+                {ITEM_STATUS_LABELS.expired}
+              </Badge>
+            ) : null}
+          </Flex>
           <Flex
             align="center"
             gap={2}
@@ -170,9 +205,17 @@ export function ClaimManualSearchList({
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState(claim.category);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedQuery(searchQuery.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -221,17 +264,18 @@ export function ClaimManualSearchList({
       try {
         const result = await fetchSecurityItems({
           category: resolvedCategoryFilter.trim() || undefined,
-          status: 'stored',
+          status: CLAIMABLE_STATUSES,
+          q: debouncedQuery || undefined,
           limit: 5,
         });
 
         if (!active) return;
-        setItems(result.data);
+        setItems(sortClaimableItems(result.data));
         setNextCursor(result.nextCursor);
       } catch (err) {
         if (!active) return;
         setError(
-          err instanceof Error ? err.message : 'Failed to load stored items.'
+          err instanceof Error ? err.message : 'Failed to load claimable items.'
         );
         setItems([]);
         setNextCursor(null);
@@ -244,21 +288,7 @@ export function ClaimManualSearchList({
     return () => {
       active = false;
     };
-  }, [resolvedCategoryFilter, categoriesLoaded]);
-
-  const filteredItems = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    if (!query) return items;
-
-    return items.filter((item) => {
-      return (
-        item.title.toLowerCase().includes(query) ||
-        item.category.toLowerCase().includes(query) ||
-        item.itemId.toLowerCase().includes(query) ||
-        item.campusName.toLowerCase().includes(query)
-      );
-    });
-  }, [items, searchQuery]);
+  }, [resolvedCategoryFilter, categoriesLoaded, debouncedQuery]);
 
   async function handleLoadMore() {
     if (!nextCursor || loadingMore) return;
@@ -269,12 +299,13 @@ export function ClaimManualSearchList({
     try {
       const result = await fetchSecurityItems({
         category: resolvedCategoryFilter.trim() || undefined,
-        status: 'stored',
+        status: CLAIMABLE_STATUSES,
+        q: debouncedQuery || undefined,
         cursor: nextCursor,
         limit: 5,
       });
 
-      setItems((current) => [...current, ...result.data]);
+      setItems((current) => sortClaimableItems([...current, ...result.data]));
       setNextCursor(result.nextCursor);
     } catch (err) {
       setError(
@@ -307,7 +338,7 @@ export function ClaimManualSearchList({
             pl={9}
             h={10}
             fontSize="sm"
-            placeholder="Search items..."
+            placeholder="Search title, brand, color, location..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
@@ -341,13 +372,13 @@ export function ClaimManualSearchList({
         <Text fontSize="sm" color="red.500" textAlign="center" py={4}>
           {error}
         </Text>
-      ) : filteredItems.length === 0 ? (
+      ) : items.length === 0 ? (
         <Text fontSize="sm" color="gray.500" textAlign="center" py={8}>
-          No stored items match your filters.
+          No claimable items match your filters.
         </Text>
       ) : (
         <Stack gap={2}>
-          {filteredItems.map((item) => (
+          {items.map((item) => (
             <ManualSearchRow
               key={item.itemId}
               item={item}

@@ -227,10 +227,16 @@ export default function SecurityItemDetailPage() {
   const registrantName =
     `${item.registeredBy.firstName} ${item.registeredBy.lastName}`.trim() ||
     PLACEHOLDER;
+  const releaserName = item.releasedBy
+    ? `${item.releasedBy.firstName} ${item.releasedBy.lastName}`.trim() ||
+      PLACEHOLDER
+    : null;
   const description =
     item.descriptionInternal ?? item.descriptionPublic ?? PLACEHOLDER;
 
   const canDispose = DISPOSABLE_STATUSES.has(item.status);
+  const canWalkInRelease =
+    item.status === 'stored' || item.status === 'expired';
 
   return (
     <Stack gap={6}>
@@ -253,7 +259,7 @@ export default function SecurityItemDetailPage() {
             Review and update found item information.
           </Text>
         </Stack>
-        {!editing && item.status === 'stored' ? (
+        {!editing && canWalkInRelease ? (
           <Button
             {...actionButtonStyles}
             variant="outline"
@@ -406,6 +412,12 @@ export default function SecurityItemDetailPage() {
             )}
             <ItemDetailRow label="Storage campus" value={item.campusName} />
             <ItemDetailRow label="Registrant" value={registrantName} />
+            {item.status === 'claimed' ? (
+              <ItemDetailRow
+                label="Released by"
+                value={releaserName ?? PLACEHOLDER}
+              />
+            ) : null}
             {editing && form ? (
               <ItemDetailRow
                 label="Description"
