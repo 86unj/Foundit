@@ -2,12 +2,14 @@
 
 import { Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import { FixedPageBackground } from '@/components/PageBackground';
-import TextInput from '../../components/TextInput';
-import { Box, Button, Stack, Heading, Link, Text } from '@chakra-ui/react';
-import { useLoginForm } from '../../hooks/useLoginForm';
+import { PageCard } from '@/components/PageCard';
+import { Button } from '@/components/ui/Button';
+import TextInput from '@/components/TextInput';
+import { Box, Heading, Link, Stack, Text } from '@chakra-ui/react';
+import { useLoginForm } from '@/hooks/useLoginForm';
 
 function LoginForm() {
   const searchParams = useSearchParams();
@@ -27,26 +29,17 @@ function LoginForm() {
   return (
     // A real <form> so Enter submits from either field (and password
     // managers recognize the login form).
-    <Stack
+    <PageCard
       as="form"
       onSubmit={(e: React.FormEvent) => {
         e.preventDefault();
         handleLogin();
       }}
-      bg="white"
-      p={8}
-      my={12}
-      rounded="md"
-      shadow="md"
-      w="532px"
-      gap={4}
-      align="stretch"
-      padding={85}
     >
-      <Heading fontSize="40px" textAlign="center" color="fg">
+      <Heading as="h1" fontSize="4xl" textAlign="center" color="fg">
         Login
       </Heading>
-      <Stack gap="20px" alignItems="center" pt={62} pb={62}>
+      <Stack gap={5} alignItems="center">
         <TextInput
           placeholder="example@myseneca.ca"
           id="email"
@@ -72,11 +65,10 @@ function LoginForm() {
       </Stack>
       <Button
         type="submit"
-        w="172px"
-        h="48px"
-        rounded="12px"
-        fontSize="16px"
-        colorPalette="blue"
+        minW={44}
+        h={12}
+        rounded="xl"
+        fontSize="md"
         alignSelf="center"
         disabled={isSubmitting}
         loading={isSubmitting}
@@ -85,13 +77,13 @@ function LoginForm() {
         Login
       </Button>
 
-      <Text textAlign="center" fontSize="14px">
+      <Text textAlign="center" fontSize="sm" color="fg.muted">
         Don&apos;t have an account?{' '}
         <Link href="/signup" color="blue.500">
           Sign up here
         </Link>
       </Text>
-    </Stack>
+    </PageCard>
   );
 }
 

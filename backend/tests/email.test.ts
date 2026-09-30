@@ -5,7 +5,7 @@ const sendMail = vi.hoisted(() => vi.fn());
 vi.hoisted(() => {
   process.env.SMTP_USER = 'smtp-user';
   process.env.SMTP_PASS = 'smtp-pass';
-  process.env.APP_URL = 'https://foundit.example';
+  process.env.FRONTEND_URL = 'https://foundit.example';
 });
 
 vi.mock('nodemailer', () => ({
@@ -46,8 +46,20 @@ describe('sendVerificationEmail', () => {
     );
     expect(sendMail.mock.calls[0]?.[0]?.html).toContain('#009adb');
     expect(sendMail.mock.calls[0]?.[0]?.html).toContain(
-      'https://foundit.example/api/auth/verify-email?token=token-123'
+      'https://foundit.example/verify-email#token=token-123'
     );
+  });
+
+  test('encodes the token in the fragment in both HTML and plain text', async () => {
+    await sendVerificationEmail('student@myseneca.ca', 'token+with/&=?#');
+
+    const mail = sendMail.mock.calls[0]?.[0];
+    for (const body of [mail.html, mail.text]) {
+      expect(body).toContain(
+        'https://foundit.example/verify-email#token=token%2Bwith%2F%26%3D%3F%23'
+      );
+      expect(body).not.toContain('/verify-email?token=');
+    }
   });
 
   test('sends notification emails', async () => {

@@ -77,7 +77,8 @@ foundit-ui/
 │   ├── student/
 │   ├── security/           # items, claims, qr, dashboards
 │   ├── report-found/       # public token-based form
-│   └── email-verified/
+│   ├── verify-email/       # signup email confirmation
+│   └── email-verified/     # redirects to /login (legacy)
 ├── components/             # Shared UI (forms, cards, Chakra wrappers)
 ├── hooks/                  # Feature hooks (forms, uploads, auth display)
 ├── lib/api/                # API client + endpoint modules
@@ -119,7 +120,7 @@ Middleware runs on edge for matched paths. It reads `foundit_role` and redirects
 | `security` | `/security/dashboard` | `/security`, `/profile` |
 | `admin`    | `/admin/dashboard`    | `/admin` + all above    |
 
-Unmatched public routes (no middleware): `/`, `/login`, `/signup`, `/report-found/[token]`, `/email-verified`.
+Unmatched public routes (no middleware): `/`, `/login`, `/signup`, `/report-found/[token]`, `/verify-email`, `/email-verified`.
 
 `/dashboard` redirects authenticated users to `ROLE_HOME[role]` (`utils/routes.ts`).
 
@@ -155,6 +156,13 @@ Add new endpoint modules alongside `items.ts` and `reportLinks.ts`. Use plain `f
 3. Build UI in `components/` and wire with a hook.
 4. Add the page under the appropriate `app/` segment.
 5. If the route needs auth, extend `middleware.ts` `config.matcher` if not already covered.
+
+### Email verification
+
+New signup emails open `/verify-email#token=…`. The page reads the token from
+the URL fragment (preferred when both forms are present), with support for
+legacy `/verify-email?token=…` links. It sends `{ "token": "…" }` to
+`POST /api/auth/verify-email` without including the token in the API URL.
 
 ## Related Documentation
 

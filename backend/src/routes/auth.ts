@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import type { RateLimitInfo } from 'express-rate-limit';
@@ -464,8 +464,28 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
 /**
  * @openapi
  * /api/auth/verify-email:
+ *   post:
+ *     summary: Verify email address using a token in the request body
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token]
+ *             properties:
+ *               token:
+ *                 type: string
+ *                 minLength: 1
+ *     responses:
+ *       '200':
+ *         description: Email verified successfully
+ *       '400':
+ *         description: Token missing, invalid, or expired
  *   get:
- *     summary: Verify email address via token link
+ *     summary: Verify email address via a legacy token link
+ *     deprecated: true
  *     tags: [Auth]
  *     parameters:
  *       - in: query
@@ -474,16 +494,17 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
  *         schema:
  *           type: string
  *     responses:
- *       '302':
- *         description: Email verified successfully. Redirects to the frontend email verified page.
+ *       '200':
+ *         description: Email verified successfully
  *       '400':
  *         description: Token missing, invalid, or expired
  */
-router.get('/verify-email', async (req, res, next) => {
+const verifyEmail: RequestHandler = async (req, res, next) => {
   try {
-    const token = req.query.token as string;
+    const token: unknown =
+      req.method === 'POST' ? req.body?.token : req.query.token;
 
-    if (!token) {
+    if (typeof token !== 'string' || !token.trim()) {
       await auditAuthDenied(req, 'email_verification_denied', 'missing_token');
       res.status(400).json({
         code: 'MISSING_TOKEN',
@@ -544,11 +565,16 @@ router.get('/verify-email', async (req, res, next) => {
       );
     });
 
-    res.redirect(`${process.env.FRONTEND_URL}/email-verified`);
+    res.status(200).json({
+      message: 'Email verified successfully.',
+    });
   } catch (err) {
     next(err);
   }
-});
+};
+
+router.get('/verify-email', verifyEmail);
+router.post('/verify-email', verifyEmail);
 
 /**
  * @openapi

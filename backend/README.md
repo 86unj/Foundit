@@ -177,7 +177,17 @@ Global API rules:
 | POST   | `/api/auth/login`        | —    | Done   | Verify email + password, return JWT access & refresh tokens |
 | POST   | `/api/auth/refresh`      | —    | Done   | Exchange refresh token for a new access token               |
 | POST   | `/api/auth/logout`       | —    | Stub   | Revoke refresh token                                        |
-| GET    | `/api/auth/verify-email` | —    | Done   | Verify email address via token link                         |
+| POST   | `/api/auth/verify-email` | —    | Done   | Verify email address with JSON `{ "token": "…" }`           |
+| GET    | `/api/auth/verify-email` | —    | Done   | Legacy verification via `?token=…`                          |
+
+### Email verification links
+
+New verification emails link to `${FRONTEND_URL}/verify-email#token=…`. The
+frontend reads the fragment and sends the token in the JSON body of
+`POST /api/auth/verify-email`, keeping it out of request URLs. The frontend
+also accepts older `/verify-email?token=…` links; the legacy
+`GET /api/auth/verify-email?token=…` endpoint remains available. Both API
+methods enforce the same token expiry and consume the token on success.
 
 ### Campus
 

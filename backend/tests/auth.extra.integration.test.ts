@@ -201,62 +201,125 @@ describe('auth extra routes', () => {
     );
   });
 
-  test('GET /api/auth/verify-email returns 400 if token is missing', async () => {
-    const app = createTestApp();
+  describe.each(['get', 'post'] as const)(
+    '%s /api/auth/verify-email',
+    (method) => {
+      function verify(app: express.Express, token?: string) {
+        const req = request(app)[method]('/api/auth/verify-email');
+        return method === 'post' ? req.send({ token }) : req.query({ token });
+      }
 
-    const res = await request(app).get('/api/auth/verify-email');
+      test('returns 400 if token is missing', async () => {
+        const app = createTestApp();
+
+        const res = await verify(app);
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('MISSING_TOKEN');
+        expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'email_verification_denied',
+            entityId: null,
+            reasonCode: 'missing_token',
+          })
+        );
+      });
+
+      test('returns 400 if token is invalid', async () => {
+        vi.mocked(hashTokenForStorage).mockReturnValueOnce('token-hash');
+        vi.mocked(prisma.user.findFirst).mockResolvedValueOnce(null);
+
+        const app = createTestApp();
+
+        const res = await verify(app, 'abc');
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('INVALID_TOKEN');
+        expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'email_verification_denied',
+            reasonCode: 'invalid_token',
+          })
+        );
+      });
+
+      test('returns 200 after successful verification', async () => {
+        vi.mocked(hashTokenForStorage).mockReturnValueOnce('token-hash');
+        vi.mocked(prisma.user.findFirst).mockResolvedValueOnce(userRow);
+        vi.mocked(prisma.user.update).mockResolvedValueOnce({
+          ...userRow,
+          isEmailVerified: true,
+        });
+
+        const app = createTestApp();
+
+        const res = await verify(app, 'abc');
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toBe('Email verified successfully.');
+        expect(hashTokenForStorage).toHaveBeenCalledWith('abc');
+        expect(prisma.user.findFirst).toHaveBeenCalledWith({
+          where: { emailVerifyToken: 'token-hash' },
+        });
+        expect(prisma.user.update).toHaveBeenCalledWith({
+          where: { userId: 'user-1' },
+          data: {
+            isEmailVerified: true,
+            emailVerifyToken: null,
+            emailVerifyTokenExpiresAt: null,
+          },
+        });
+        expect(writeAuditLog).toHaveBeenCalledWith(
+          expect.objectContaining({
+            action: 'email_verification_succeeded',
+            entityId: 'user-1',
+            outcome: 'success',
+          }),
+          prisma
+        );
+      });
+
+      test('returns 400 for an expired token without changing the user', async () => {
+        vi.mocked(hashTokenForStorage).mockReturnValueOnce('token-hash');
+        vi.mocked(prisma.user.findFirst).mockResolvedValueOnce({
+          ...userRow,
+          emailVerifyTokenExpiresAt: new Date(Date.now() - 1000),
+        });
+
+        const res = await verify(createTestApp(), 'abc');
+
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('TOKEN_EXPIRED');
+        expect(prisma.user.update).not.toHaveBeenCalled();
+        expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
+          expect.objectContaining({ reasonCode: 'expired_token' })
+        );
+      });
+    }
+  );
+
+  test.each([null, 123, true, [], {}, '', '   '])(
+    'POST /api/auth/verify-email rejects malformed token %j',
+    async (token) => {
+      const res = await request(createTestApp())
+        .post('/api/auth/verify-email')
+        .send({ token });
+
+      expect(res.status).toBe(400);
+      expect(res.body.code).toBe('MISSING_TOKEN');
+      expect(hashTokenForStorage).not.toHaveBeenCalled();
+      expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    }
+  );
+
+  test('POST /api/auth/verify-email does not accept a query token without a body', async () => {
+    const res = await request(createTestApp()).post(
+      '/api/auth/verify-email?token=abc'
+    );
 
     expect(res.status).toBe(400);
     expect(res.body.code).toBe('MISSING_TOKEN');
-    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'email_verification_denied',
-        entityId: null,
-        reasonCode: 'missing_token',
-      })
-    );
-  });
-
-  test('GET /api/auth/verify-email returns 400 if token is invalid', async () => {
-    vi.mocked(hashTokenForStorage).mockReturnValueOnce('token-hash');
-    vi.mocked(prisma.user.findFirst).mockResolvedValueOnce(null);
-
-    const app = createTestApp();
-
-    const res = await request(app).get('/api/auth/verify-email?token=abc');
-
-    expect(res.status).toBe(400);
-    expect(res.body.code).toBe('INVALID_TOKEN');
-    expect(writeAuditLogBestEffort).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'email_verification_denied',
-        reasonCode: 'invalid_token',
-      })
-    );
-  });
-
-  test('GET /api/auth/verify-email redirects after successful verification', async () => {
-    vi.mocked(hashTokenForStorage).mockReturnValueOnce('token-hash');
-    vi.mocked(prisma.user.findFirst).mockResolvedValueOnce(userRow);
-    vi.mocked(prisma.user.update).mockResolvedValueOnce({
-      ...userRow,
-      isEmailVerified: true,
-    });
-
-    const app = createTestApp();
-
-    const res = await request(app).get('/api/auth/verify-email?token=abc');
-
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:3000/email-verified');
-    expect(writeAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: 'email_verification_succeeded',
-        entityId: 'user-1',
-        outcome: 'success',
-      }),
-      prisma
-    );
+    expect(hashTokenForStorage).not.toHaveBeenCalled();
   });
 
   test('POST /api/auth/refresh returns 401 if refresh token is expired', async () => {

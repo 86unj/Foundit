@@ -28,12 +28,12 @@ export default function LegalModal({
         <Dialog.Backdrop />
 
         <Dialog.Positioner>
-          <Dialog.Content maxW="700px">
+          <Dialog.Content maxW="2xl">
             <Dialog.Header>
               <Dialog.Title>Legal Documents</Dialog.Title>
             </Dialog.Header>
 
-            <Dialog.Body maxH="500px" overflowY="auto">
+            <Dialog.Body maxH="md" overflowY="auto">
               <Stack gap={8}>
                 <Stack gap={3}>
                   <Heading size="md">Privacy Policy</Heading>

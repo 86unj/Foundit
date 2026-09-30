@@ -1,23 +1,25 @@
 'use client';
 
-import Navbar from '../../components/Navbar';
-import Footer from '../../components/Footer';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import { FixedPageBackground } from '@/components/PageBackground';
-import TextInput from '../../components/TextInput';
+import { PageCard } from '@/components/PageCard';
+import { Button } from '@/components/ui/Button';
+import TextInput from '@/components/TextInput';
 import {
   Box,
-  Button,
-  Stack,
+  Checkbox,
   Heading,
   HStack,
   Link,
+  Stack,
   Text,
-  Checkbox,
 } from '@chakra-ui/react';
-import { useSignUpForm } from '../../hooks/useSignupForm';
+import { useSignUpForm } from '@/hooks/useSignupForm';
 import { useState } from 'react';
-import LegalModal from '../../components/legal/LegalModal';
-import LegalAgreement from '../../components/legal/LegalAgreement';
+import LegalModal from '@/components/legal/LegalModal';
+import LegalAgreement from '@/components/legal/LegalAgreement';
+
 export default function SignUpPage() {
   const {
     email,
@@ -85,20 +87,12 @@ export default function SignUpPage() {
           justifyContent="center"
           px={4}
         >
-          <Stack
-            bg="white"
-            rounded="md"
-            shadow="md"
-            w="532px"
-            p="50px"
-            gap="28px"
-            my={12}
-          >
-            <Heading fontSize="40px" textAlign="center" color="#0F172A">
+          <PageCard>
+            <Heading as="h1" fontSize="4xl" textAlign="center" color="fg">
               Sign Up
             </Heading>
-            <Stack gap="20px">
-              <HStack gap="24px" align="flex-start">
+            <Stack gap={5}>
+              <HStack gap={6} align="flex-start">
                 <TextInput
                   id="firstName"
                   label="First Name"
@@ -129,15 +123,6 @@ export default function SignUpPage() {
                 error={emailError}
                 onBlur={handleEmailBlur}
               />
-              {/* <TextInput
-                id="schoolId"
-                label="Student/Employee ID"
-                value={schoolId}
-                width="full"
-                onChange={(e) => setSchoolId(e.target.value)}
-                onBlur={() => validateSchoolIdField(schoolId)}
-                error={schoolIdError}
-              /> */}
 
               <TextInput
                 id="password"
@@ -161,9 +146,9 @@ export default function SignUpPage() {
                 error={confirmPasswordError}
               />
             </Stack>
-            <Stack gap="1px">
+            <Stack gap={0}>
               {legalAgreementError && (
-                <Text color="#CD0000" fontSize="sm" mt={1}>
+                <Text color="fg.error" fontSize="sm" mt={1}>
                   {legalAgreementError}
                 </Text>
               )}
@@ -189,11 +174,10 @@ export default function SignUpPage() {
             </Stack>
 
             <Button
-              w="172px"
-              h="48px"
-              rounded="12px"
-              fontSize="16px"
-              colorPalette="blue"
+              minW={44}
+              h={12}
+              rounded="xl"
+              fontSize="md"
               onClick={handleSignUp}
               alignSelf="center"
               disabled={isSubmitting}
@@ -202,13 +186,13 @@ export default function SignUpPage() {
             >
               Sign Up
             </Button>
-            <Text textAlign="center" fontSize="14px">
+            <Text textAlign="center" fontSize="sm" color="fg.muted">
               Already have an account?{' '}
               <Link href="/login" color="blue.500">
                 Login here
               </Link>
             </Text>
-          </Stack>
+          </PageCard>
         </Box>
 
         <Footer />

@@ -1,9 +1,11 @@
 'use client';
 
-import Navbar from '../components/Navbar';
-import Footer from '../components/Footer';
+import Navbar from '@/components/Navbar';
+import Footer from '@/components/Footer';
 import { FixedPageBackground } from '@/components/PageBackground';
-import { Box, Button, Heading, Stack, Text } from '@chakra-ui/react';
+import { PageCard } from '@/components/PageCard';
+import { Button } from '@/components/ui/Button';
+import { Box, Heading, Stack, Text } from '@chakra-ui/react';
 import { useRouter } from 'next/navigation';
 
 export default function Home() {
@@ -25,59 +27,48 @@ export default function Home() {
           display="flex"
           alignItems="center"
           justifyContent="center"
+          px={4}
         >
-          <Stack
-            bg="bg"
-            rounded="md"
-            shadow="md"
-            p={8}
-            w="380px"
-            alignItems="center"
-            textAlign="center"
-          >
-            <Stack gap={8} alignItems="center">
-              <Heading fontSize="40px" color="black" mb={6}>
-                Welcome
-              </Heading>
+          <PageCard alignItems="center" textAlign="center">
+            <Heading as="h1" fontSize="4xl" color="fg">
+              Welcome
+            </Heading>
 
-              <Text color="fg.muted" fontSize="14px" fontWeight="normal">
-                Please proceed login with your school account
-              </Text>
+            <Text color="fg.muted" fontSize="sm">
+              Please proceed login with your school account
+            </Text>
 
-              <Stack gap={2} alignItems="center">
-                <Button
-                  w="172px"
-                  h="48px"
-                  rounded="12px"
-                  fontSize="16px"
-                  colorPalette="blue"
-                  onClick={() => router.push('/login')}
-                >
-                  Login
-                </Button>
-                <Button
-                  w="172px"
-                  h="48px"
-                  rounded="12px"
-                  fontSize="16px"
-                  colorPalette="blue"
-                  variant="outline"
-                  onClick={() => router.push('/signup')}
-                >
-                  Sign Up
-                </Button>
-              </Stack>
-
-              <Stack gap={1}>
-                <Text fontSize="13px" fontWeight="normal" color="fg.muted">
-                  Lost and found office hours
-                </Text>
-                <Text fontSize="13px" fontWeight="normal" color="fg.muted">
-                  Mon - Fri &nbsp;&nbsp;&nbsp;&nbsp; 9:00AM - 5:00PM
-                </Text>
-              </Stack>
+            <Stack gap={2} alignItems="center">
+              <Button
+                minW={44}
+                h={12}
+                rounded="xl"
+                fontSize="md"
+                onClick={() => router.push('/login')}
+              >
+                Login
+              </Button>
+              <Button
+                variant="outline"
+                minW={44}
+                h={12}
+                rounded="xl"
+                fontSize="md"
+                onClick={() => router.push('/signup')}
+              >
+                Sign Up
+              </Button>
             </Stack>
-          </Stack>
+
+            <Stack gap={1}>
+              <Text fontSize="sm" color="fg.muted">
+                Lost and found office hours
+              </Text>
+              <Text fontSize="sm" color="fg.muted">
+                Mon - Fri &nbsp;&nbsp;&nbsp;&nbsp; 9:00AM - 5:00PM
+              </Text>
+            </Stack>
+          </PageCard>
         </Box>
         <Footer />
       </Box>
