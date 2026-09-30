@@ -157,6 +157,13 @@ Add new endpoint modules alongside `items.ts` and `reportLinks.ts`. Use plain `f
 4. Add the page under the appropriate `app/` segment.
 5. If the route needs auth, extend `middleware.ts` `config.matcher` if not already covered.
 
+### Email verification
+
+New signup emails open `/verify-email#token=…`. The page reads the token from
+the URL fragment (preferred when both forms are present), with support for
+legacy `/verify-email?token=…` links. It sends `{ "token": "…" }` to
+`POST /api/auth/verify-email` without including the token in the API URL.
+
 ## Related Documentation
 
 - [Root README](../README.md)

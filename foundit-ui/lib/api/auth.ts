@@ -16,10 +16,11 @@ export function verifyEmail(token: string): Promise<VerifyEmailResponse> {
     return existing;
   }
 
-  const request = apiFetch<VerifyEmailResponse>(
-    `/api/auth/verify-email?token=${encodeURIComponent(token)}`,
-    { auth: false }
-  ).catch((err: unknown) => {
+  const request = apiFetch<VerifyEmailResponse>('/api/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+    auth: false,
+  }).catch((err: unknown) => {
     verifyEmailCache.delete(token);
     throw err;
   });

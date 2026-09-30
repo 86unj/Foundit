@@ -141,7 +141,7 @@ export async function sendVerificationEmail(
   }
 
   const frontendBase = requireEnv('FRONTEND_URL').replace(/\/$/, '');
-  const verifyUrl = `${frontendBase}/verify-email?token=${encodeURIComponent(token)}`;
+  const verifyUrl = `${frontendBase}/verify-email#token=${encodeURIComponent(token)}`;
   const { html, text } = buildBrandedEmail({
     greeting: 'Hi,',
     title: 'Verify your Foundit account',

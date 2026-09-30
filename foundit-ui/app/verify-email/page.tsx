@@ -1,6 +1,12 @@
 'use client';
 
-import { Suspense, useEffect, useState, type ReactNode } from 'react';
+import {
+  Suspense,
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -15,6 +21,11 @@ import {
   IoCheckmarkCircleOutline,
   IoHourglassOutline,
 } from 'react-icons/io5';
+
+function subscribeToHashChange(callback: () => void) {
+  window.addEventListener('hashchange', callback);
+  return () => window.removeEventListener('hashchange', callback);
+}
 
 type VerifyStatus = 'loading' | 'success' | 'error';
 
@@ -79,16 +90,33 @@ function VerifyEmailCard({
 function VerifyEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const token = searchParams.get('token')?.trim() ?? '';
+  // Fragments are only available in the browser; wait for hydration before verifying.
+  const token = useSyncExternalStore(
+    subscribeToHashChange,
+    () =>
+      (
+        new URLSearchParams(window.location.hash.slice(1)).get('token') ??
+        searchParams.get('token') ??
+        ''
+      ).trim(),
+    () => null
+  );
 
-  const [status, setStatus] = useState<VerifyStatus>(
-    token ? 'loading' : 'error'
-  );
-  const [errorMessage, setErrorMessage] = useState(
-    token
-      ? ''
-      : 'This verification link is missing a token. Please use the link from your email, or sign up again.'
-  );
+  const [result, setResult] = useState<{
+    token: string;
+    status: VerifyStatus;
+    errorMessage?: string;
+  } | null>(null);
+  const status =
+    token === ''
+      ? 'error'
+      : result?.token === token
+        ? result.status
+        : 'loading';
+  const errorMessage =
+    token === ''
+      ? 'This verification link is missing a token. Please use the link from your email, or sign up again.'
+      : result?.errorMessage;
 
   useEffect(() => {
     if (!token) {
@@ -100,19 +128,21 @@ function VerifyEmailContent() {
     verifyEmail(token)
       .then(() => {
         if (!cancelled) {
-          setStatus('success');
+          setResult({ token, status: 'success' });
         }
       })
       .catch((err: unknown) => {
         if (cancelled) {
           return;
         }
-        setStatus('error');
-        if (err instanceof ApiError) {
-          setErrorMessage(err.message);
-          return;
-        }
-        setErrorMessage('Unable to verify your email. Please try again.');
+        setResult({
+          token,
+          status: 'error',
+          errorMessage:
+            err instanceof ApiError
+              ? err.message
+              : 'Unable to verify your email. Please try again.',
+        });
       });
 
     return () => {
@@ -146,7 +176,7 @@ function VerifyEmailContent() {
       ? 'Please wait while we verify your email…'
       : status === 'success'
         ? 'Your account is now verified.\nRedirecting to login…'
-        : errorMessage;
+        : (errorMessage ?? '');
 
   return (
     <VerifyEmailCard
