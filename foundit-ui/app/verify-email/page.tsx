@@ -1,15 +1,80 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { FixedPageBackground } from '@/components/PageBackground';
-import { Box, Button, Heading, Stack, Text } from '@chakra-ui/react';
+import { PageCard } from '@/components/PageCard';
+import { Button } from '@/components/ui/Button';
+import { Box, Flex, Heading, Text } from '@chakra-ui/react';
 import { ApiError } from '@/lib/api/client';
 import { verifyEmail } from '@/lib/api/auth';
+import {
+  IoAlertCircleOutline,
+  IoCheckmarkCircleOutline,
+  IoHourglassOutline,
+} from 'react-icons/io5';
 
 type VerifyStatus = 'loading' | 'success' | 'error';
+
+const statusIcon: Record<VerifyStatus, ReactNode> = {
+  loading: <IoHourglassOutline size={32} />,
+  success: <IoCheckmarkCircleOutline size={32} />,
+  error: <IoAlertCircleOutline size={32} />,
+};
+
+function VerifyEmailCard({
+  heading,
+  body,
+  status,
+  action,
+}: {
+  heading: string;
+  body: string;
+  status: VerifyStatus;
+  action?: { label: string; href: string };
+}) {
+  const router = useRouter();
+
+  return (
+    <PageCard alignItems="center" textAlign="center">
+      <Flex
+        w={16}
+        h={16}
+        rounded="full"
+        bg="blue.50"
+        color="blue.600"
+        alignItems="center"
+        justifyContent="center"
+        flexShrink={0}
+        aria-hidden
+      >
+        {statusIcon[status]}
+      </Flex>
+
+      <Heading as="h1" fontSize="4xl" color="fg">
+        {heading}
+      </Heading>
+
+      <Text color="fg.muted" fontSize="sm" whiteSpace="pre-line">
+        {body}
+      </Text>
+
+      {action && (
+        <Button
+          minW={44}
+          h={12}
+          rounded="xl"
+          fontSize="md"
+          onClick={() => router.push(action.href)}
+        >
+          {action.label}
+        </Button>
+      )}
+    </PageCard>
+  );
+}
 
 function VerifyEmailContent() {
   const router = useRouter();
@@ -84,39 +149,18 @@ function VerifyEmailContent() {
         : errorMessage;
 
   return (
-    <Stack
-      bg="bg"
-      rounded="md"
-      shadow="md"
-      p={8}
-      w="380px"
-      minH="235px"
-      alignItems="center"
-      textAlign="center"
-    >
-      <Heading fontSize="40px" color="fg" mb={6}>
-        {heading}
-      </Heading>
-
-      <Text mb={12} color="fg.muted" pt={10} whiteSpace="pre-line">
-        {body}
-      </Text>
-
-      {status !== 'loading' && (
-        <Button
-          w="172px"
-          h="48px"
-          rounded="12px"
-          fontSize="16px"
-          colorPalette="blue"
-          onClick={() =>
-            router.push(status === 'success' ? '/login' : '/signup')
-          }
-        >
-          {status === 'success' ? 'Login' : 'Sign up'}
-        </Button>
-      )}
-    </Stack>
+    <VerifyEmailCard
+      heading={heading}
+      body={body}
+      status={status}
+      action={
+        status === 'loading'
+          ? undefined
+          : status === 'success'
+            ? { label: 'Login', href: '/login' }
+            : { label: 'Sign up', href: '/signup' }
+      }
+    />
   );
 }
 
@@ -139,26 +183,15 @@ export default function VerifyEmailPage() {
           display="flex"
           alignItems="center"
           justifyContent="center"
+          px={4}
         >
           <Suspense
             fallback={
-              <Stack
-                bg="bg"
-                rounded="md"
-                shadow="md"
-                p={8}
-                w="380px"
-                minH="235px"
-                alignItems="center"
-                textAlign="center"
-              >
-                <Heading fontSize="40px" color="fg" mb={6}>
-                  Verifying
-                </Heading>
-                <Text mb={12} color="fg.muted" pt={10}>
-                  Please wait while we verify your email…
-                </Text>
-              </Stack>
+              <VerifyEmailCard
+                heading="Verifying"
+                body="Please wait while we verify your email…"
+                status="loading"
+              />
             }
           >
             <VerifyEmailContent />
