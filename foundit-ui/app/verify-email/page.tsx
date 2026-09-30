@@ -55,6 +55,20 @@ function VerifyEmailContent() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (status !== 'success') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      router.push('/login');
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [status, router]);
+
   const heading =
     status === 'loading'
       ? 'Verifying'
@@ -66,7 +80,7 @@ function VerifyEmailContent() {
     status === 'loading'
       ? 'Please wait while we verify your email…'
       : status === 'success'
-        ? 'Your account is now verified.\nPlease log in to continue.'
+        ? 'Your account is now verified.\nRedirecting to login…'
         : errorMessage;
 
   return (
