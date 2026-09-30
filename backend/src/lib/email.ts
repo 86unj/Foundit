@@ -4,7 +4,7 @@ import nodemailer from 'nodemailer';
 // In production, set real SMTP credentials in .env to send actual emails.
 
 // Validate required email environment variables at startup
-function requireEnv(name: 'SMTP_USER' | 'SMTP_PASS' | 'APP_URL'): string {
+function requireEnv(name: 'SMTP_USER' | 'SMTP_PASS' | 'FRONTEND_URL'): string {
   const value = process.env[name];
   if (!value) {
     throw new Error(`${name} is required for email verification`);
@@ -140,7 +140,8 @@ export async function sendVerificationEmail(
     return;
   }
 
-  const verifyUrl = `${requireEnv('APP_URL')}/api/auth/verify-email?token=${token}`;
+  const frontendBase = requireEnv('FRONTEND_URL').replace(/\/$/, '');
+  const verifyUrl = `${frontendBase}/verify-email?token=${encodeURIComponent(token)}`;
   const { html, text } = buildBrandedEmail({
     greeting: 'Hi,',
     title: 'Verify your Foundit account',

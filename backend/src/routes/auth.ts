@@ -465,7 +465,7 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
  * @openapi
  * /api/auth/verify-email:
  *   get:
- *     summary: Verify email address via token link
+ *     summary: Verify email address via token
  *     tags: [Auth]
  *     parameters:
  *       - in: query
@@ -474,8 +474,8 @@ router.post('/register', validate(registerSchema), async (req, res, next) => {
  *         schema:
  *           type: string
  *     responses:
- *       '302':
- *         description: Email verified successfully. Redirects to the frontend email verified page.
+ *       '200':
+ *         description: Email verified successfully
  *       '400':
  *         description: Token missing, invalid, or expired
  */
@@ -544,7 +544,9 @@ router.get('/verify-email', async (req, res, next) => {
       );
     });
 
-    res.redirect(`${process.env.FRONTEND_URL}/email-verified`);
+    res.status(200).json({
+      message: 'Email verified successfully.',
+    });
   } catch (err) {
     next(err);
   }

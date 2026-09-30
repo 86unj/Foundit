@@ -13,6 +13,9 @@ export const ROLE_HOME: Record<UserRole, string> = {
   admin: '/admin/dashboard',
 };
 
+/** Guest email-verification page opened from the signup confirmation email. */
+export const VERIFY_EMAIL_PATH = '/verify-email';
+
 /** Confirmation screen shown after a student submits a claim. */
 export const CLAIM_SUBMITTED_PATH = '/student/claim-item/submitted';
 

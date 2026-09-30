@@ -235,7 +235,7 @@ describe('auth extra routes', () => {
     );
   });
 
-  test('GET /api/auth/verify-email redirects after successful verification', async () => {
+  test('GET /api/auth/verify-email returns 200 after successful verification', async () => {
     vi.mocked(hashTokenForStorage).mockReturnValueOnce('token-hash');
     vi.mocked(prisma.user.findFirst).mockResolvedValueOnce(userRow);
     vi.mocked(prisma.user.update).mockResolvedValueOnce({
@@ -247,8 +247,8 @@ describe('auth extra routes', () => {
 
     const res = await request(app).get('/api/auth/verify-email?token=abc');
 
-    expect(res.status).toBe(302);
-    expect(res.headers.location).toBe('http://localhost:3000/email-verified');
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Email verified successfully.');
     expect(writeAuditLog).toHaveBeenCalledWith(
       expect.objectContaining({
         action: 'email_verification_succeeded',

@@ -77,7 +77,8 @@ foundit-ui/
 │   ├── student/
 │   ├── security/           # items, claims, qr, dashboards
 │   ├── report-found/       # public token-based form
-│   └── email-verified/
+│   ├── verify-email/       # signup email confirmation
+│   └── email-verified/     # redirects to /login (legacy)
 ├── components/             # Shared UI (forms, cards, Chakra wrappers)
 ├── hooks/                  # Feature hooks (forms, uploads, auth display)
 ├── lib/api/                # API client + endpoint modules
@@ -119,7 +120,7 @@ Middleware runs on edge for matched paths. It reads `foundit_role` and redirects
 | `security` | `/security/dashboard` | `/security`, `/profile` |
 | `admin`    | `/admin/dashboard`    | `/admin` + all above    |
 
-Unmatched public routes (no middleware): `/`, `/login`, `/signup`, `/report-found/[token]`, `/email-verified`.
+Unmatched public routes (no middleware): `/`, `/login`, `/signup`, `/report-found/[token]`, `/verify-email`, `/email-verified`.
 
 `/dashboard` redirects authenticated users to `ROLE_HOME[role]` (`utils/routes.ts`).
 

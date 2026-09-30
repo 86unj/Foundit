@@ -5,7 +5,7 @@ const sendMail = vi.hoisted(() => vi.fn());
 vi.hoisted(() => {
   process.env.SMTP_USER = 'smtp-user';
   process.env.SMTP_PASS = 'smtp-pass';
-  process.env.APP_URL = 'https://foundit.example';
+  process.env.FRONTEND_URL = 'https://foundit.example';
 });
 
 vi.mock('nodemailer', () => ({
@@ -46,7 +46,7 @@ describe('sendVerificationEmail', () => {
     );
     expect(sendMail.mock.calls[0]?.[0]?.html).toContain('#009adb');
     expect(sendMail.mock.calls[0]?.[0]?.html).toContain(
-      'https://foundit.example/api/auth/verify-email?token=token-123'
+      'https://foundit.example/verify-email?token=token-123'
     );
   });
 
